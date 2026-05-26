@@ -1,1 +1,0 @@
-# TakaSmart-Ai
