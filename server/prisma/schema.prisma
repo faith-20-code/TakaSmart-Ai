@@ -1,0 +1,164 @@
+generator client {
+  provider     = "prisma-client-js"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+//ENUMS
+
+enum UserType {
+  SELLER
+  BUYER
+  ADMIN
+}
+
+enum SellerType {
+  HOUSEHOLD
+  WASTE_PICKER
+  BUSINESS
+}
+
+enum MaterialType {
+  PLASTIC
+  METAL
+  GLASS
+  ELECTRONICS
+  PAPER
+  TEXTILE
+  RUBBER
+  OTHER
+}
+
+enum ListingStatus {
+  ACTIVE
+  CLAIMED
+  COMPLETED
+  EXPIRED
+}
+
+enum InterestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+
+//MODELS
+
+model User {
+  id           String   @id @default(cuid())
+  phoneNumber  String   @unique
+  name         String
+  userType     UserType
+  passwordHash String
+  locationLat  Float?
+  locationLng  Float?
+  plusCode     String?
+  verified     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // [] means one User can have MANY of these — this is one-to-many
+  // SellerProfile and BuyerProfile have no [] because one User has exactly one of each
+  sellerProfile      SellerProfile?
+  buyerProfile       BuyerProfile?
+  listings           Listing[]
+  sentMessages       Message[]         @relation("SentMessages")
+  receivedMessages   Message[]         @relation("ReceivedMessages")
+  interests          ExpressInterest[] @relation("BuyerInterests")
+}
+
+model SellerProfile {
+  id            String     @id @default(cuid())
+  userId        String     @unique
+  // @unique on userId tells Prisma: one User can only have ONE SellerProfile
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sellerType    SellerType
+  idDocumentUrl String?
+  rating        Float      @default(0)
+  totalRatings  Int        @default(0)
+  createdAt     DateTime   @default(now())
+}
+
+model BuyerProfile {
+  id                String         @id @default(cuid())
+  userId            String         @unique
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName       String
+  nemaLicense       String?
+  materialsAccepted MaterialType[] // [] because a buyer accepts MULTIPLE material types
+  coverageRadiusKm  Int            @default(20)
+  subscriptionTier  String         @default("free")
+  rating            Float          @default(0)
+  totalRatings      Int            @default(0)
+  createdAt         DateTime       @default(now())
+}
+
+model Listing {
+  id           String        @id @default(cuid())
+  sellerId     String
+  // NO @unique on sellerId — one seller can have MANY listings (one-to-many)
+  seller       User          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  materialType MaterialType
+  quantityKg   Float
+  images       String[]      // [] because a listing can have multiple photo URLs
+  locationLat  Float
+  locationLng  Float
+  plusCode     String?
+  areaName     String?
+  aiPriceMin   Float?
+  aiPriceMax   Float?
+  status       ListingStatus @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  expiresAt    DateTime
+
+  // onDelete: Cascade goes HERE (on the parent side) not on the child models
+  interests    ExpressInterest[] 
+  messages     Message[]         
+}
+
+model ExpressInterest {
+  id        String         @id @default(cuid())
+  listingId String
+  // NO onDelete here — it is defined on Listing's side above
+  listing   Listing        @relation(fields: [listingId], references: [id])
+  buyerId   String
+  buyer     User           @relation("BuyerInterests", fields: [buyerId], references: [id])
+  message   String?
+  status    InterestStatus @default(PENDING)
+  createdAt DateTime       @default(now())
+
+  @@unique([listingId, buyerId]) // one buyer can only express interest once per listing
+}
+
+model Message {
+  id         String    @id @default(cuid())
+  listingId  String
+  // The fix for the Message error: remove onDelete from the child side
+  listing    Listing   @relation(fields: [listingId], references: [id])
+  senderId   String
+  sender     User      @relation("SentMessages", fields: [senderId], references: [id])
+  receiverId String
+  receiver   User      @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  content    String
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  type      String
+  read      Boolean  @default(false)
+  data      Json?
+  createdAt DateTime @default(now())
+}
