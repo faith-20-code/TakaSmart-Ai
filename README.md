@@ -14,85 +14,64 @@ Sellers list recyclable materials (plastic, metal, glass, electronics, etc.) wit
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18, Vite, Tailwind CSS, React Router v6 |
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS |
 | Backend | Node.js, Express.js |
 | ORM | Prisma 7 |
-| Database | PostgreSQL (Neon — cloud hosted) |
+| Database | PostgreSQL (Neon cloud hosted) |
 | Cache / Sessions | Redis |
 | AI | Anthropic Claude API |
 | Maps | Google Maps JavaScript API |
 | Media uploads | Cloudinary |
 | SMS / USSD | Africa's Talking |
-| Auth | JWT (HTTP-only cookies) |
+| Auth | JWT / HTTP-only cookies |
 | Deployment | Vercel (client), Railway (server) |
-| Containers | Docker + Docker Compose |
 
 ---
 
 ## Project Structure
 
-```
-taka-platform/
-│
-├── client/                        # React frontend (Vite PWA)
-│   ├── public/
-│   ├── src/
-│   │   ├── components/            # Reusable UI components
-│   │   ├── context/
-│   │   │   └── AuthContext.jsx    # Global auth state
-│   │   ├── pages/
-│   │   │   ├── auth/              # Login, Register
-│   │   │   ├── seller/            # Seller dashboard, create listing, my listings
-│   │   │   ├── buyer/             # Buyer dashboard, listing detail
-│   │   │   ├── admin/             # Admin portal
-│   │   │   └── shared/            # Home page
-│   │   ├── services/
-│   │   │   └── api.js             # Axios instance (all API calls go through here)
-│   │   ├── App.jsx                # Router and protected routes
-│   │   ├── main.jsx               # React entry point
-│   │   └── index.css              # Tailwind base styles
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   └── package.json
-│
-├── server/                        # Express.js backend
-│   ├── prisma/
-│   │   ├── schema.prisma          # Database schema (all models and relations)
-│   │   └── seed.js                # Test data for development
-│   ├── src/
-│   │   ├── config/
-│   │   │   ├── prisma.js          # Prisma client (database connection)
-│   │   │   └── redis.js           # Redis client
-│   │   ├── controllers/           # Request logic (auth, listings, etc.)
-│   │   ├── middleware/
-│   │   │   ├── auth.middleware.js # JWT protection for routes
-│   │   │   └── error.middleware.js# Global error handler
-│   │   ├── routes/                # API route definitions
-│   │   ├── services/
-│   │   │   └── ai.service.js      # Claude AI — matching, pricing, chatbot
-│   │   └── index.js               # Express app entry point
-│   ├── prisma.config.ts           # Prisma 7 config (datasource + migrations)
-│   ├── tsconfig.json              # TypeScript config for prisma.config.ts
-│   ├── .env.example               # Environment variable template (copy to .env)
-│   └── package.json
-│
-├── .gitignore
-└── README.md
+```text
+TakaSmart-Ai/
+|-- client/                       # Next.js frontend
+|   |-- app/                      # App Router pages, layout, and global styles
+|   |   |-- page.tsx              # Home page
+|   |   |-- layout.tsx            # Root layout and metadata
+|   |   `-- globals.css           # Tailwind/global styles
+|   |-- public/                   # Static assets
+|   |-- src/
+|   |   `-- lib/
+|   |       `-- api.ts            # API client helper
+|   |-- next.config.ts
+|   |-- tsconfig.json
+|   `-- package.json
+|
+|-- server/                       # Express.js backend
+|   |-- prisma/
+|   |   `-- schema.prisma         # Database schema
+|   |-- src/
+|   |   |-- config/
+|   |   |   `-- prisma.js         # Prisma client/database connection
+|   |   `-- index.js              # Express app entry point
+|   |-- prisma.config.ts          # Prisma 7 config
+|   |-- .env.example              # Environment variable template
+|   `-- package.json
+|
+|-- .gitignore
+`-- README.md
 ```
 
 > Note: `.env` files are never committed. Copy `.env.example` to `.env` and fill in your own keys.
 
 ---
 
-## Getting Started (Local Setup)
+## Getting Started
 
 ### Prerequisites
 
 - Node.js v20 or higher
 - Git
-- A Neon account (free) — [console.neon.tech](https://console.neon.tech)
-- A Redis instance — local install or [Upstash](https://upstash.com) free tier
+- A Neon account for PostgreSQL
+- A Redis instance, local or hosted
 
 ### 1. Clone the repository
 
@@ -114,15 +93,16 @@ Create your environment file:
 cp .env.example .env
 ```
 
-Open `.env` and fill in the required values. The only ones needed to run locally are:
+Open `.env` and fill in the required values. The only ones needed to run locally at first are:
 
-```
-DATABASE_URL        — your Neon PostgreSQL connection string
-REDIS_URL           — your Redis connection string
-JWT_SECRET          — any long random string
+```text
+DATABASE_URL        your PostgreSQL connection string
+REDIS_URL           your Redis connection string
+JWT_SECRET          any long random string
+CLIENT_URL          http://localhost:3000
 ```
 
-The rest (Cloudinary, Claude API, Google Maps, Africa's Talking) are only needed when you reach those features in later sprints.
+The rest (Cloudinary, Claude API, Google Maps, Africa's Talking) are only needed when those features are implemented.
 
 Push the schema to your database:
 
@@ -137,7 +117,7 @@ Start the backend:
 npm run dev
 ```
 
-Confirm it is running by visiting `http://localhost:5000/health` in your browser.
+Confirm it is running by visiting `http://localhost:5000/health`.
 
 ### 3. Set up the frontend
 
@@ -149,7 +129,7 @@ npm install
 npm run dev
 ```
 
-The frontend runs at `http://localhost:5173` and automatically proxies API requests to the backend on port 5000.
+The Next.js frontend runs at `http://localhost:3000`. API requests should point to the backend at `http://localhost:5000`.
 
 ---
 
@@ -159,36 +139,45 @@ The frontend runs at `http://localhost:5173` and automatically proxies API reque
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Start server in development mode (auto-restarts on save) |
-| `npm start` | Start server in production mode |
-| `npx prisma generate` | Regenerate Prisma client after schema changes |
+| `npm run dev` | Start the Express server in development mode |
+| `npm start` | Start the Express server in production mode |
+| `npx prisma generate` | Regenerate the Prisma client after schema changes |
 | `npx prisma db push` | Push schema changes to the database |
-| `npx prisma studio` | Open visual database browser at localhost:5555 |
-| `npm run db:seed` | Seed database with test data |
+| `npx prisma studio` | Open the Prisma database browser |
+| `npm run db:seed` | Seed the database with test data |
 
 ### Frontend (`/client`)
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Start frontend dev server |
-| `npm run build` | Build for production |
-| `npm run preview` | Preview production build locally |
+| `npm run dev` | Start the Next.js development server |
+| `npm run build` | Build the Next.js app for production |
+| `npm start` | Start the production Next.js server after building |
+| `npm run lint` | Run ESLint |
 
 ---
 
 ## User Types
 
-**Seller** — household, waste picker, or small business. Can post recyclable waste listings with photos, quantity, material type, and location.
+**Seller** - household, waste picker, or small business. Can post recyclable waste listings with photos, quantity, material type, and location.
 
-**Buyer** — registered recycling company. Browses listings, filters by material and location, and contacts sellers directly through the platform.
+**Buyer** - registered recycling company. Browses listings, filters by material and location, and contacts sellers directly through the platform.
 
-**Admin** — manages users, listings, and platform activity through an internal dashboard.
+**Admin** - manages users, listings, and platform activity through an internal dashboard.
 
 ---
 
 ## Environment Variables
 
-All required variables are documented in `server/.env.example`. Never commit your `.env` file. Share credentials with teammates through a secure channel (not through Git).
+Backend variables are documented in `server/.env.example`.
+
+For the Next.js client, create `client/.env.local` when needed:
+
+```text
+NEXT_PUBLIC_API_URL=http://localhost:5000
+```
+
+Never commit `.env` or `.env.local` files. Share credentials through a secure channel.
 
 ---
 
@@ -200,4 +189,4 @@ Work on feature branches only. Branch naming: `feature/your-feature-name` or `fi
 
 ## License
 
-Private — all rights reserved.
+Private - all rights reserved.
