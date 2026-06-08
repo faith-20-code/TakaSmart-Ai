@@ -14,7 +14,7 @@ Sellers list recyclable materials (plastic, metal, glass, electronics, etc.) wit
 
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS |
+| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS |
 | Backend | Node.js, Express.js |
 | ORM | Prisma 7 |
 | Database | PostgreSQL (Neon cloud hosted) |

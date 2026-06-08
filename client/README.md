@@ -4,7 +4,7 @@ This is the Next.js frontend for TakaSmart AI.
 
 ## Stack
 
-- Next.js 16
+- Next.js 15
 - React 19
 - TypeScript
 - Tailwind CSS
