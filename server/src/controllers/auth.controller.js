@@ -122,4 +122,39 @@ const getMe = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, logout, getMe };
+
+const createAdmin = async (req, res, next) => {
+  try {
+    // Only a SUPER_ADMIN can create other admins
+    if (req.user.adminLevel !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: 'Only a super admin can create new admin accounts.' });
+    }
+
+    const { phoneNumber, name, password, adminLevel } = req.body;
+
+    if (!phoneNumber || !name || !password) {
+      return res.status(400).json({ error: 'Phone number, name, and password are required.' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    const newAdmin = await prisma.user.create({
+      data: {
+        phoneNumber,
+        name,
+        userType: 'ADMIN',
+        adminLevel: adminLevel || 'MODERATOR', // defaults to the lower tier
+        passwordHash,
+        verified: true,
+      },
+      select: { id: true, name: true, phoneNumber: true, userType: true, adminLevel: true },
+    });
+
+    res.status(201).json({ message: 'Admin created successfully', user: newAdmin });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+module.exports = { register, login, logout, getMe, createAdmin };

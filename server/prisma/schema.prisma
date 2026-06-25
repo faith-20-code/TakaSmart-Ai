@@ -22,6 +22,11 @@ enum SellerType {
   BUSINESS
 }
 
+enum AdminLevel {
+  SUPER_ADMIN   // full access — can create other admins, delete anything
+  MODERATOR     // can manage listings and users, cannot create admins
+}
+
 enum MaterialType {
   PLASTIC
   METAL
@@ -48,12 +53,12 @@ enum InterestStatus {
 
 
 //MODELS
-
 model User {
   id           String   @id @default(cuid())
   phoneNumber  String   @unique
   name         String
   userType     UserType
+  adminLevel   AdminLevel? // only set when userType is ADMIN, null otherwise
   passwordHash String
   locationLat  Float?
   locationLng  Float?
@@ -64,15 +69,18 @@ model User {
 
   // [] means one User can have MANY of these — this is one-to-many
   // SellerProfile and BuyerProfile have no [] because one User has exactly one of each
-  
-  sellerProfile      SellerProfile?
-  buyerProfile       BuyerProfile?
-  listings           Listing[]
-  sentMessages       Message[]         @relation("SentMessages")
-  receivedMessages   Message[]         @relation("ReceivedMessages")
-  interests          ExpressInterest[] @relation("BuyerInterests")
+
+  sellerProfile    SellerProfile?
+  buyerProfile     BuyerProfile?
+  listings         Listing[]
+  sentMessages     Message[]         @relation("SentMessages")
+  receivedMessages Message[]         @relation("ReceivedMessages")
+  interests        ExpressInterest[] @relation("BuyerInterests")
 }
 
+  
+  
+ 
 model SellerProfile {
   id            String     @id @default(cuid())
   userId        String     @unique
