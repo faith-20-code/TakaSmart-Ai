@@ -23,6 +23,12 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 
+const listingRoutes = require('./routes/listing.routes');
+// ... (keep your existing requires)
+
+app.use('/api/auth', authRoutes);
+app.use('/api/listings', listingRoutes);
+
 // Error handler must always be last
 app.use(errorHandler);
 
