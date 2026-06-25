@@ -64,6 +64,7 @@ model User {
 
   // [] means one User can have MANY of these — this is one-to-many
   // SellerProfile and BuyerProfile have no [] because one User has exactly one of each
+  
   sellerProfile      SellerProfile?
   buyerProfile       BuyerProfile?
   listings           Listing[]
