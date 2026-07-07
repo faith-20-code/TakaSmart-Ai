@@ -19,6 +19,7 @@ export type User = {
   name: string;
   phoneNumber: string;
   userType: UserType;
+  adminLevel?: "SUPER_ADMIN" | "MODERATOR" | null;
   verified?: boolean;
 };
 

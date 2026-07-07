@@ -111,6 +111,7 @@ const getMe = async (req, res, next) => {
         name: true, 
         phoneNumber: true, 
         userType: true,
+        adminLevel: true,
         verified: true, 
         sellerProfile: true, 
         buyerProfile: true,

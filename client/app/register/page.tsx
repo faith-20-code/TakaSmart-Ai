@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { BrandMark } from "@/src/components/BrandMark";
 import { dashboardByUserType } from "@/src/components/ProtectedRoute";
 import { useAuth, type UserType } from "@/src/context/AuthContext";
+import { ApiError } from "@/src/lib/api";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -25,8 +26,19 @@ export default function RegisterPage() {
     try {
       const user = await register({ name, phoneNumber, password, userType });
       router.push(dashboardByUserType[user.userType]);
-    } catch {
-      setError("Could not create your account. Please try again.");
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const data = err.data as
+          | { error?: string; details?: { message: string }[] }
+          | undefined;
+        setError(
+          data?.details?.[0]?.message ||
+            data?.error ||
+            "Could not create your account. Please try again.",
+        );
+      } else {
+        setError("Could not create your account. Please try again.");
+      }
     } finally {
       setSubmitting(false);
     }
