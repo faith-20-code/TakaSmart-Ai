@@ -9,6 +9,7 @@ const { errorHandler } = require('./middleware/error.middleware');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const uploadRoutes = require('./routes/upload.routes');
 
 const allowedOrigins = process.env.CLIENT_URL
   ? process.env.CLIENT_URL.split(',').map((origin) => origin.trim())
@@ -30,6 +31,11 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/listings', listingRoutes);
+
+
+
+// add this line with your other app.use routes
+app.use('/api/upload', uploadRoutes);
 
 // Error handler must always be last
 app.use(errorHandler);
