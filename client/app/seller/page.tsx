@@ -6,6 +6,19 @@ import { ProtectedRoute } from "@/src/components/ProtectedRoute";
 import { useAuth } from "@/src/context/AuthContext";
 import { apiClient } from "@/src/lib/api";
 
+async function uploadImage(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("image", file);
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/upload/image`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+  if (!res.ok) throw new Error("upload failed");
+  const { url } = await res.json();
+  return url;
+}
+
 const materialTypes = [
   "PLASTIC",
   "METAL",
@@ -112,6 +125,7 @@ export default function SellerPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [photoError, setPhotoError] = useState("");
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
 
   async function loadListings() {
     try {
@@ -152,24 +166,16 @@ export default function SellerPage() {
     const selected = Array.from(files).slice(0, remainingSlots);
 
     try {
-      const dataUrls = await Promise.all(
-        selected.map(
-          (file) =>
-            new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = () => reject(new Error("read failed"));
-              reader.readAsDataURL(file);
-            }),
-        ),
-      );
+      setUploadingPhotos(true);
+      const urls = await Promise.all(selected.map((file) => uploadImage(file)));
       setForm((current) => ({
         ...current,
-        images: [...current.images, ...dataUrls],
+        images: [...current.images, ...urls],
       }));
     } catch {
-      setPhotoError("Could not read one of those photos. Try again.");
+      setPhotoError("Could not upload one of those photos. Try again.");
     } finally {
+      setUploadingPhotos(false);
       event.target.value = "";
     }
   }
@@ -457,6 +463,12 @@ export default function SellerPage() {
                     ) : null}
                   </div>
 
+                  {uploadingPhotos ? (
+                    <p className="text-sm" style={{ color: KRAFT }}>
+                      Uploading photo...
+                    </p>
+                  ) : null}
+
                   {photoError ? (
                     <p className="text-sm" style={{ color: RUST }}>
                       {photoError}
@@ -484,7 +496,7 @@ export default function SellerPage() {
                 <button
                   className="h-11 rounded-sm px-4 text-sm font-semibold uppercase tracking-[0.1em] text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60"
                   style={{ background: TEAL, fontFamily: "'IBM Plex Mono', monospace" }}
-                  disabled={submitting || user?.id.startsWith("preview-")}
+                  disabled={submitting || uploadingPhotos || user?.id.startsWith("preview-")}
                   type="submit"
                 >
                   {submitting ? "Posting..." : "Post ticket"}
