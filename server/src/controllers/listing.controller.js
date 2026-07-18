@@ -74,4 +74,61 @@ const getMyListings = async (req, res, next) => {
   }
 };
 
-module.exports = { createListing, getListings, getMyListings };
+const expressInterest = async (req, res, next) => {
+  try {
+    const { message } = req.body;
+
+    const listing = await prisma.listing.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!listing) return res.status(404).json({ error: 'Listing not found.' });
+    if (listing.status !== 'ACTIVE') return res.status(400).json({ error: 'Listing is no longer active.' });
+
+    const interest = await prisma.expressInterest.create({
+      data: {
+        listingId: req.params.id,
+        buyerId: req.user.id,
+        message,
+      },
+    });
+
+    // Notify the seller
+    await prisma.notification.create({
+      data: {
+        userId: listing.sellerId,
+        title: 'A buyer is interested!',
+        body: `${req.user.name} is interested in your listing: ${listing.title}`,
+        type: 'INTEREST_RECEIVED',
+        data: { listingId: listing.id, interestId: interest.id },
+      },
+    });
+
+    res.status(201).json({ message: 'Interest expressed successfully', interest });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getListingById = async (req, res, next) => {
+  try {
+    const listing = await prisma.listing.findUnique({
+      where: { id: req.params.id },
+      include: {
+        seller: { select: { name: true, phoneNumber: true } },
+        interests: {
+          include: {
+            buyer: { select: { name: true, buyerProfile: true } },
+          },
+        },
+      },
+    });
+
+    if (!listing) return res.status(404).json({ error: 'Listing not found.' });
+    res.json({ listing });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { createListing, getListings, getMyListings, expressInterest, getListingById };

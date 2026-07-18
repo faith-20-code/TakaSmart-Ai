@@ -22,7 +22,9 @@ const registerSchema = z.object({
   name: z.string().min(2),
   password: z.string().min(6),
   userType: z.enum(['SELLER', 'BUYER']),
-  sellerType: z.enum(['HOUSEHOLD', 'WASTE_PICKER', 'BUSINESS']).optional(),
+  accountType: z.enum(['PERSONAL', 'BUSINESS']).optional(),
+  businessName: z.string().optional(),
+  registrationNo: z.string().optional(),
   companyName: z.string().optional(),
   nemaLicense: z.string().optional(),
   materialsAccepted: z.array(
@@ -43,8 +45,12 @@ const register = async (req, res, next) => {
         userType: data.userType,
         passwordHash,
         ...(data.userType === 'SELLER' && {
-          sellerProfile: { 
-            create: { sellerType: data.sellerType || 'HOUSEHOLD' } 
+          sellerProfile: {
+            create: {
+              accountType: data.accountType || 'PERSONAL',
+              businessName: data.businessName,
+              registrationNo: data.registrationNo,
+            },
           },
         }),
         ...(data.userType === 'BUYER' && {

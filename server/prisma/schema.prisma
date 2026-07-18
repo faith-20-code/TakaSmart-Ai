@@ -16,9 +16,8 @@ enum UserType {
   ADMIN
 }
 
-enum SellerType {
-  HOUSEHOLD
-  WASTE_PICKER
+enum AccountType {
+  PERSONAL
   BUSINESS
 }
 
@@ -76,21 +75,24 @@ model User {
   sentMessages     Message[]         @relation("SentMessages")
   receivedMessages Message[]         @relation("ReceivedMessages")
   interests        ExpressInterest[] @relation("BuyerInterests")
+  collectionPoints CollectionPoint[]
 }
 
   
   
  
 model SellerProfile {
-  id            String     @id @default(cuid())
-  userId        String     @unique
-  // @unique on userId tells Prisma: one User can only have ONE SellerProfile
-  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sellerType    SellerType
-  idDocumentUrl String?
-  rating        Float      @default(0)
-  totalRatings  Int        @default(0)
-  createdAt     DateTime   @default(now())
+  id             String      @id @default(cuid())
+  userId         String      @unique
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountType    AccountType @default(PERSONAL)
+  businessName   String?
+  registrationNo String?
+  idDocumentUrl  String?
+  points         Int         @default(0)
+  rating         Float       @default(0)
+  totalRatings   Int         @default(0)
+  createdAt      DateTime    @default(now())
 }
 
 model BuyerProfile {
@@ -145,6 +147,21 @@ model ExpressInterest {
   createdAt DateTime       @default(now())
 
   @@unique([listingId, buyerId]) // one buyer can only express interest once per listing
+}
+
+model CollectionPoint {
+  id          String   @id @default(cuid())
+  sellerId    String
+  seller      User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  name        String
+  address     String
+  locationLat Float
+  locationLng Float
+  areaName    String?
+  materials   MaterialType[]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Message {

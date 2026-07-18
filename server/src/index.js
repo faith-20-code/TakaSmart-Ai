@@ -10,6 +10,9 @@ const { errorHandler } = require('./middleware/error.middleware');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const uploadRoutes = require('./routes/upload.routes');
+const collectionPointRoutes = require('./routes/collectionPoint.routes');
+
+
 
 const allowedOrigins = process.env.CLIENT_URL
   ? process.env.CLIENT_URL.split(',').map((origin) => origin.trim())
@@ -29,8 +32,11 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
+
+
 app.use('/api/auth', authRoutes);
 app.use('/api/listings', listingRoutes);
+app.use('/api/collection-points', collectionPointRoutes);
 
 
 
