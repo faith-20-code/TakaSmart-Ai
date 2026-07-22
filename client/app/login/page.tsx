@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BrandMark } from "@/src/components/BrandMark";
-import { dashboardByUserType } from "@/src/components/ProtectedRoute";
+import { getDashboardPath } from "@/src/components/ProtectedRoute";
 import { useAuth, type UserType } from "@/src/context/AuthContext";
 
 export default function LoginPage() {
@@ -22,7 +22,7 @@ export default function LoginPage() {
 
     try {
       const user = await login({ phoneNumber, password });
-      router.push(dashboardByUserType[user.userType]);
+      router.push(getDashboardPath(user));
     } catch {
       setError("Could not sign you in. Check your details and try again.");
     } finally {
@@ -32,7 +32,7 @@ export default function LoginPage() {
 
   function handlePreview(userType: UserType) {
     const user = previewAs(userType);
-    router.push(dashboardByUserType[user.userType]);
+    router.push(getDashboardPath(user));
   }
 
   return (
@@ -108,7 +108,7 @@ export default function LoginPage() {
           </p>
           {process.env.NODE_ENV === "development" ? (
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              {(["SELLER", "BUYER", "ADMIN"] as UserType[]).map((type) => (
+              {(["SELLER","BUSINESS", "BUYER", "ADMIN"] as UserType[]).map((type) => (
                 <button
                   className="h-12 rounded-md bg-white px-4 text-sm font-semibold text-[#123526] transition hover:bg-[#e8f3ec]"
                   key={type}

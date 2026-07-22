@@ -12,7 +12,16 @@ import {
 import { useRouter } from "next/navigation";
 import { ApiError, apiClient } from "@/src/lib/api";
 
-export type UserType = "SELLER" | "BUYER" | "ADMIN";
+export type UserType = "SELLER"| "BUYER" | "ADMIN";
+
+export type SellerAccountType = "PERSONAL" | "BUSINESS";
+
+export type SellerProfile = {
+  accountType: SellerAccountType;
+  businessName?: string | null;
+  registrationNo?: string | null;
+  points: number;
+};
 
 export type User = {
   id: string;
@@ -21,6 +30,10 @@ export type User = {
   userType: UserType;
   adminLevel?: "SUPER_ADMIN" | "MODERATOR" | null;
   verified?: boolean;
+  // Only present for SELLER users. Populated on /auth/login and /auth/me —
+  // NOT populated on /auth/register (the backend's register response select
+  // doesn't include it), so don't rely on this immediately after registration.
+  sellerProfile?: SellerProfile | null;
 };
 
 type LoginInput = {
@@ -31,6 +44,11 @@ type LoginInput = {
 type RegisterInput = LoginInput & {
   name: string;
   userType: UserType;
+  // Seller-only — set when userType is "SELLER"
+  accountType?: "PERSONAL" | "BUSINESS";
+  // Seller-only — set when accountType is "BUSINESS"
+  businessName?: string;
+  registrationNo?: string;
 };
 
 type AuthResponse = {
@@ -93,17 +111,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const previewAs = useCallback((userType: UserType) => {
     const previewUser: User = {
       id: `preview-${userType.toLowerCase()}`,
-      name:
-        userType === "SELLER"
-          ? "Preview Seller"
-          : userType === "BUYER"
-            ? "Preview Buyer"
-            : "Preview Admin",
+      name: `Preview ${userType}`,
       phoneNumber: "+254700000000",
       userType,
-      verified: true,
+      sellerProfile:
+        userType === "SELLER"
+          ? {
+              accountType: "PERSONAL",
+              points: 0,
+            }
+          : undefined,
     };
-
     setUser(previewUser);
     return previewUser;
   }, []);

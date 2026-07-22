@@ -4,9 +4,11 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BrandMark } from "@/src/components/BrandMark";
-import { dashboardByUserType } from "@/src/components/ProtectedRoute";
+import { getDashboardPath } from "@/src/components/ProtectedRoute";
 import { useAuth, type UserType } from "@/src/context/AuthContext";
 import { ApiError } from "@/src/lib/api";
+
+type AccountType = "PERSONAL" | "BUSINESS";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -15,8 +17,43 @@ export default function RegisterPage() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [userType, setUserType] = useState<UserType>("SELLER");
+  const [accountType, setAccountType] = useState<AccountType>("PERSONAL");
+  const [businessName, setBusinessName] = useState("");
+  const [registrationNo, setRegistrationNo] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const isSeller = userType === "SELLER";
+  const isBusiness = isSeller && accountType === "BUSINESS";
+
+  // function handleUserTypeChange(type: UserType) {
+  //   setUserType(type);
+  //   if (type !== "PERSONAL" && type !== "BUSINESS") {
+  //     // account type / business fields are seller-only — reset so stale
+  //     // values never get sent for a buyer registration
+  //     setAccountType("PERSONAL");
+  //     setBusinessName("");
+  //     setRegistrationNo("");
+  //   }
+  // }
+
+  function handleUserTypeChange(type: UserType) {
+  setUserType(type);
+
+  if (type !== "SELLER") {
+    setAccountType("PERSONAL");
+    setBusinessName("");
+    setRegistrationNo("");
+  }
+}
+
+  function handleAccountTypeChange(type: AccountType) {
+    setAccountType(type);
+    if (type !== "BUSINESS") {
+      setBusinessName("");
+      setRegistrationNo("");
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -24,8 +61,25 @@ export default function RegisterPage() {
     setSubmitting(true);
 
     try {
-      const user = await register({ name, phoneNumber, password, userType });
-      router.push(dashboardByUserType[user.userType]);
+      const user = await register({
+        name,
+        phoneNumber,
+        password,
+        userType,
+        ...(isSeller ? { accountType } : {}),
+        ...(isBusiness
+          ? { businessName, registrationNo }
+          : {}),
+      });
+      // The register response doesn't include sellerProfile (unlike login),
+      // so for sellers we route off what the form already knows rather than
+      // user.sellerProfile — getDashboardPath still handles buyer/admin.
+      const redirectPath = isSeller
+        ? isBusiness
+          ? "/dashboard/business"
+          : "/dashboard/personal"
+        : getDashboardPath(user);
+      router.push(redirectPath);
     } catch (err) {
       if (err instanceof ApiError) {
         const data = err.data as
@@ -112,7 +166,7 @@ export default function RegisterPage() {
             <fieldset>
               <legend className="text-sm font-semibold">Account type</legend>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                {(["SELLER", "BUYER"] as UserType[]).map((type) => (
+                {(["PERSONAL", "BUSINESS", "BUYER"] as UserType[]).map((type) => (
                   <label
                     className="flex h-12 items-center justify-center rounded-md border border-[#bfd2c9] bg-[#fbfcfa] text-sm font-semibold transition has-[:checked]:border-[#1d9e75] has-[:checked]:bg-[#e7f6ef] has-[:checked]:text-[#0b684d]"
                     key={type}
@@ -120,15 +174,66 @@ export default function RegisterPage() {
                     <input
                       className="sr-only"
                       checked={userType === type}
-                      onChange={() => setUserType(type)}
+                      onChange={() => handleUserTypeChange(type)}
                       name="userType"
                       type="radio"
                     />
-                    {type === "SELLER" ? "Seller" : "Buyer"}
+                    {type === "SELLER" ? "Seller" : type === "BUYER" ? "Buyer" : "Admin"}
                   </label>
                 ))}
               </div>
             </fieldset>
+
+            {isSeller ? (
+              <fieldset>
+                <legend className="text-sm font-semibold">
+                  Seller account category
+                </legend>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {(["PERSONAL", "BUSINESS"] as AccountType[]).map((type) => (
+                    <label
+                      className="flex h-12 items-center justify-center rounded-md border border-[#bfd2c9] bg-[#fbfcfa] text-sm font-semibold transition has-[:checked]:border-[#1d9e75] has-[:checked]:bg-[#e7f6ef] has-[:checked]:text-[#0b684d]"
+                      key={type}
+                    >
+                      <input
+                        className="sr-only"
+                        checked={accountType === type}
+                        onChange={() => handleAccountTypeChange(type)}
+                        name="accountType"
+                        type="radio"
+                      />
+                      {type === "PERSONAL" ? "Personal account" : "Business account"}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ) : null}
+
+            {isBusiness ? (
+              <>
+                <label className="block">
+                  <span className="text-sm font-semibold">Business name</span>
+                  <input
+                    className="mt-2 h-12 w-full rounded-md border border-[#bfd2c9] bg-[#fbfcfa] px-4 text-sm outline-none transition focus:border-[#1d9e75] focus:bg-white"
+                    value={businessName}
+                    onChange={(event) => setBusinessName(event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold">
+                    Registration number
+                  </span>
+                  <input
+                    className="mt-2 h-12 w-full rounded-md border border-[#bfd2c9] bg-[#fbfcfa] px-4 text-sm outline-none transition focus:border-[#1d9e75] focus:bg-white"
+                    value={registrationNo}
+                    onChange={(event) => setRegistrationNo(event.target.value)}
+                    required
+                  />
+                </label>
+              </>
+            ) : null}
+
             {error ? (
               <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
                 {error}
