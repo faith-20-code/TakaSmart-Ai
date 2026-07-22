@@ -8,7 +8,7 @@ const {
 } = require('../controllers/collectionPoint.controller');
 
 router.get('/', getCollectionPoints);
-router.get('/my', protect, restrictTo('SELLER'), getMyCollectionPoints);
-router.post('/', protect, restrictTo('SELLER'), createCollectionPoint);
+router.get('/my', protect, restrictTo('PERSONAL', 'BUSINESS'), getMyCollectionPoints);
+router.post('/', protect, restrictTo('PERSONAL', 'BUSINESS'), createCollectionPoint);
 
 module.exports = router;

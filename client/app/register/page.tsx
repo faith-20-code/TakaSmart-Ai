@@ -8,7 +8,14 @@ import { getDashboardPath } from "@/src/components/ProtectedRoute";
 import { useAuth, type UserType } from "@/src/context/AuthContext";
 import { ApiError } from "@/src/lib/api";
 
-type AccountType = "PERSONAL" | "BUSINESS";
+const USER_TYPES: UserType[] = ["PERSONAL", "BUSINESS", "BUYER"];
+
+const USER_TYPE_LABELS: Record<UserType, string> = {
+  PERSONAL: "Personal",
+  BUSINESS: "Business",
+  BUYER: "Buyer",
+  ADMIN: "Admin",
+};
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -16,40 +23,19 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
-  const [userType, setUserType] = useState<UserType>("SELLER");
-  const [accountType, setAccountType] = useState<AccountType>("PERSONAL");
+  const [userType, setUserType] = useState<UserType>("PERSONAL");
   const [businessName, setBusinessName] = useState("");
   const [registrationNo, setRegistrationNo] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const isSeller = userType === "SELLER";
-  const isBusiness = isSeller && accountType === "BUSINESS";
-
-  // function handleUserTypeChange(type: UserType) {
-  //   setUserType(type);
-  //   if (type !== "PERSONAL" && type !== "BUSINESS") {
-  //     // account type / business fields are seller-only — reset so stale
-  //     // values never get sent for a buyer registration
-  //     setAccountType("PERSONAL");
-  //     setBusinessName("");
-  //     setRegistrationNo("");
-  //   }
-  // }
+  const isBusiness = userType === "BUSINESS";
 
   function handleUserTypeChange(type: UserType) {
-  setUserType(type);
-
-  if (type !== "SELLER") {
-    setAccountType("PERSONAL");
-    setBusinessName("");
-    setRegistrationNo("");
-  }
-}
-
-  function handleAccountTypeChange(type: AccountType) {
-    setAccountType(type);
+    setUserType(type);
     if (type !== "BUSINESS") {
+      // business fields only apply to BUSINESS accounts — reset so stale
+      // values never get sent for a personal or buyer registration
       setBusinessName("");
       setRegistrationNo("");
     }
@@ -66,19 +52,18 @@ export default function RegisterPage() {
         phoneNumber,
         password,
         userType,
-        ...(isSeller ? { accountType } : {}),
-        ...(isBusiness
-          ? { businessName, registrationNo }
-          : {}),
+        ...(isBusiness ? { businessName, registrationNo } : {}),
       });
-      // The register response doesn't include sellerProfile (unlike login),
-      // so for sellers we route off what the form already knows rather than
-      // user.sellerProfile — getDashboardPath still handles buyer/admin.
-      const redirectPath = isSeller
-        ? isBusiness
-          ? "/dashboard/business"
-          : "/dashboard/personal"
-        : getDashboardPath(user);
+      // The register response doesn't include accountProfile (unlike login),
+      // so for personal/business accounts we route off what the form already
+      // knows rather than user.accountProfile — getDashboardPath still
+      // handles buyer/admin.
+      const redirectPath =
+        userType === "PERSONAL"
+          ? "/dashboard/personal"
+          : userType === "BUSINESS"
+            ? "/dashboard/business"
+            : getDashboardPath(user);
       router.push(redirectPath);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -110,12 +95,14 @@ export default function RegisterPage() {
             Start with the right account for how you move materials.
           </h1>
           <p className="mt-5 max-w-xl text-base leading-7 text-[#5e7569]">
-            Sellers post recyclable supply. Buyers discover relevant listings.
-            Sprint 1 sets up the entry flow; Sprint 2 adds the working market.
+            Personal and business accounts post recyclable supply. Buyers
+            discover relevant listings. Sprint 1 sets up the entry flow;
+            Sprint 2 adds the working market.
           </p>
-          <div className="mt-8 grid max-w-xl gap-3 sm:grid-cols-2">
+          <div className="mt-8 grid max-w-xl gap-3 sm:grid-cols-3">
             {[
-              ["Seller", "Post recyclable materials"],
+              ["Personal", "Post materials as an individual"],
+              ["Business", "Post materials as a registered business"],
               ["Buyer", "Source nearby supply"],
             ].map(([title, body]) => (
               <div
@@ -165,8 +152,8 @@ export default function RegisterPage() {
             </label>
             <fieldset>
               <legend className="text-sm font-semibold">Account type</legend>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                {(["PERSONAL", "BUSINESS", "BUYER"] as UserType[]).map((type) => (
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {USER_TYPES.map((type) => (
                   <label
                     className="flex h-12 items-center justify-center rounded-md border border-[#bfd2c9] bg-[#fbfcfa] text-sm font-semibold transition has-[:checked]:border-[#1d9e75] has-[:checked]:bg-[#e7f6ef] has-[:checked]:text-[#0b684d]"
                     key={type}
@@ -178,36 +165,11 @@ export default function RegisterPage() {
                       name="userType"
                       type="radio"
                     />
-                    {type === "SELLER" ? "Seller" : type === "BUYER" ? "Buyer" : "Admin"}
+                    {USER_TYPE_LABELS[type]}
                   </label>
                 ))}
               </div>
             </fieldset>
-
-            {isSeller ? (
-              <fieldset>
-                <legend className="text-sm font-semibold">
-                  Seller account category
-                </legend>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {(["PERSONAL", "BUSINESS"] as AccountType[]).map((type) => (
-                    <label
-                      className="flex h-12 items-center justify-center rounded-md border border-[#bfd2c9] bg-[#fbfcfa] text-sm font-semibold transition has-[:checked]:border-[#1d9e75] has-[:checked]:bg-[#e7f6ef] has-[:checked]:text-[#0b684d]"
-                      key={type}
-                    >
-                      <input
-                        className="sr-only"
-                        checked={accountType === type}
-                        onChange={() => handleAccountTypeChange(type)}
-                        name="accountType"
-                        type="radio"
-                      />
-                      {type === "PERSONAL" ? "Personal account" : "Business account"}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            ) : null}
 
             {isBusiness ? (
               <>

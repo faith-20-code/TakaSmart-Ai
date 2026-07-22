@@ -7,6 +7,15 @@ import { BrandMark } from "@/src/components/BrandMark";
 import { getDashboardPath } from "@/src/components/ProtectedRoute";
 import { useAuth, type UserType } from "@/src/context/AuthContext";
 
+const PREVIEW_TYPES: UserType[] = ["PERSONAL", "BUSINESS", "BUYER"];
+
+const PREVIEW_LABELS: Record<UserType, string> = {
+  PERSONAL: "Personal",
+  BUSINESS: "Business",
+  BUYER: "Buyer",
+  ADMIN: "Admin",
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const { login, previewAs } = useAuth();
@@ -108,18 +117,14 @@ export default function LoginPage() {
           </p>
           {process.env.NODE_ENV === "development" ? (
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              {(["SELLER","BUSINESS", "BUYER", "ADMIN"] as UserType[]).map((type) => (
+              {PREVIEW_TYPES.map((type) => (
                 <button
                   className="h-12 rounded-md bg-white px-4 text-sm font-semibold text-[#123526] transition hover:bg-[#e8f3ec]"
                   key={type}
                   onClick={() => handlePreview(type)}
                   type="button"
                 >
-                  {type === "SELLER"
-                    ? "Seller"
-                    : type === "BUYER"
-                      ? "Buyer"
-                      : "Admin"}
+                  {PREVIEW_LABELS[type]}
                 </button>
               ))}
             </div>

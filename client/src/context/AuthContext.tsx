@@ -12,12 +12,13 @@ import {
 import { useRouter } from "next/navigation";
 import { ApiError, apiClient } from "@/src/lib/api";
 
-export type UserType = "SELLER"| "BUYER" | "ADMIN";
+export type UserType = "PERSONAL" | "BUSINESS" | "BUYER" | "ADMIN";
 
-export type SellerAccountType = "PERSONAL" | "BUSINESS";
-
-export type SellerProfile = {
-  accountType: SellerAccountType;
+// Present for PERSONAL and BUSINESS accounts. `accountType` mirrors the
+// user's top-level userType (kept on the profile too since the backend
+// still stores this under a `sellerProfile` DB relation — see mapUser below).
+export type AccountProfile = {
+  accountType: "PERSONAL" | "BUSINESS";
   businessName?: string | null;
   registrationNo?: string | null;
   points: number;
@@ -30,11 +31,25 @@ export type User = {
   userType: UserType;
   adminLevel?: "SUPER_ADMIN" | "MODERATOR" | null;
   verified?: boolean;
-  // Only present for SELLER users. Populated on /auth/login and /auth/me —
-  // NOT populated on /auth/register (the backend's register response select
-  // doesn't include it), so don't rely on this immediately after registration.
-  sellerProfile?: SellerProfile | null;
+  // Only present for PERSONAL/BUSINESS users. Populated on /auth/login and
+  // /auth/me — NOT populated on /auth/register (the backend's register
+  // response select doesn't include it), so don't rely on this immediately
+  // after registration.
+  accountProfile?: AccountProfile | null;
 };
+
+// Shape the backend actually sends. The DB relation is still named
+// `sellerProfile` (renaming it needs a schema.prisma migration we haven't
+// done), so we translate it to `accountProfile` right here — nothing past
+// this file should ever reference `sellerProfile`.
+type RawUser = Omit<User, "accountProfile"> & {
+  sellerProfile?: AccountProfile | null;
+};
+
+function mapUser(raw: RawUser): User {
+  const { sellerProfile, ...rest } = raw;
+  return { ...rest, accountProfile: sellerProfile ?? null };
+}
 
 type LoginInput = {
   phoneNumber: string;
@@ -44,15 +59,13 @@ type LoginInput = {
 type RegisterInput = LoginInput & {
   name: string;
   userType: UserType;
-  // Seller-only — set when userType is "SELLER"
-  accountType?: "PERSONAL" | "BUSINESS";
-  // Seller-only — set when accountType is "BUSINESS"
+  // BUSINESS-only
   businessName?: string;
   registrationNo?: string;
 };
 
 type AuthResponse = {
-  user: User;
+  user: RawUser;
 };
 
 type AuthContextValue = {
@@ -75,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     try {
       const response = await apiClient.get<AuthResponse>("/auth/me");
-      setUser(response.user);
+      setUser(mapUser(response.user));
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setUser(null);
@@ -98,14 +111,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (input: LoginInput) => {
     const response = await apiClient.post<AuthResponse>("/auth/login", input);
-    setUser(response.user);
-    return response.user;
+    const mapped = mapUser(response.user);
+    setUser(mapped);
+    return mapped;
   }, []);
 
   const register = useCallback(async (input: RegisterInput) => {
     const response = await apiClient.post<AuthResponse>("/auth/register", input);
-    setUser(response.user);
-    return response.user;
+    const mapped = mapUser(response.user);
+    setUser(mapped);
+    return mapped;
   }, []);
 
   const previewAs = useCallback((userType: UserType) => {
@@ -114,10 +129,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: `Preview ${userType}`,
       phoneNumber: "+254700000000",
       userType,
-      sellerProfile:
-        userType === "SELLER"
+      accountProfile:
+        userType === "PERSONAL" || userType === "BUSINESS"
           ? {
-              accountType: "PERSONAL",
+              accountType: userType,
+              businessName:
+                userType === "BUSINESS" ? "Preview Business Ltd" : undefined,
+              registrationNo: userType === "BUSINESS" ? "PVW-0000" : undefined,
               points: 0,
             }
           : undefined,

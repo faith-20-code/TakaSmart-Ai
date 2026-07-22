@@ -17,12 +17,15 @@ const sendTokenCookie = (res, token) => {
   });
 };
 
+// "PERSONAL" and "BUSINESS" are now top-level account types (there is no
+// more "SELLER" type wrapping an accountType sub-field). Both still map to
+// the `sellerProfile` relation in the DB — renaming that relation itself
+// needs a schema.prisma migration, which is a separate change.
 const registerSchema = z.object({
   phoneNumber: z.string().regex(/^\+2547\d{8}$/, 'Use format +254701234567'),
   name: z.string().min(2),
   password: z.string().min(6),
-  userType: z.enum(['SELLER', 'BUYER']),
-  accountType: z.enum(['PERSONAL', 'BUSINESS']).optional(),
+  userType: z.enum(['PERSONAL', 'BUSINESS', 'BUYER']),
   businessName: z.string().optional(),
   registrationNo: z.string().optional(),
   companyName: z.string().optional(),
@@ -38,16 +41,19 @@ const register = async (req, res, next) => {
     const data = registerSchema.parse(req.body);
     const passwordHash = await bcrypt.hash(data.password, 12);
 
+    const isListerAccount = data.userType === 'PERSONAL' || data.userType === 'BUSINESS';
+
     const user = await prisma.user.create({
       data: {
         phoneNumber: data.phoneNumber,
         name: data.name,
         userType: data.userType,
         passwordHash,
-        ...(data.userType === 'SELLER' && {
+        ...(isListerAccount && {
           sellerProfile: {
             create: {
-              accountType: data.accountType || 'PERSONAL',
+              // accountType mirrors the top-level userType now
+              accountType: data.userType,
               businessName: data.businessName,
               registrationNo: data.registrationNo,
             },

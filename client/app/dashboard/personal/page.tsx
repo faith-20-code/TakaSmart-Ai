@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { DashboardShell } from "@/src/components/DashboardShell";
+import { LocationPicker } from "@/src/components/LocationPicker";
 import { ProtectedRoute } from "@/src/components/ProtectedRoute";
 import { useAuth } from "@/src/context/AuthContext";
 import { apiClient } from "@/src/lib/api";
@@ -116,7 +117,7 @@ const labelClass =
   "text-[11px] font-semibold uppercase tracking-[0.16em]";
 const labelStyle = { color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" };
 
-export default function PersonalSellerDashboardPage() {
+export default function PersonalDashboardPage() {
   const { user, logout } = useAuth();
   const [form, setForm] = useState(initialForm);
   const [listings, setListings] = useState<Listing[]>([]);
@@ -140,7 +141,7 @@ export default function PersonalSellerDashboardPage() {
   }
 
   useEffect(() => {
-    if (user?.userType === "SELLER" && !user.id.startsWith("preview-")) {
+    if (user?.userType === "PERSONAL" && !user.id.startsWith("preview-")) {
       void loadListings();
     } else {
       setLoadingListings(false);
@@ -215,10 +216,10 @@ export default function PersonalSellerDashboardPage() {
   }
 
   const isPreview = !!user?.id.startsWith("preview-");
-  const points = user?.sellerProfile?.points ?? 0;
+  const points = user?.accountProfile?.points ?? 0;
 
   return (
-    <ProtectedRoute allowedUserType="SELLER" allowedAccountType="PERSONAL">
+    <ProtectedRoute allowedUserType="PERSONAL">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
       `}</style>
@@ -399,40 +400,58 @@ export default function PersonalSellerDashboardPage() {
                     02 — Pickup location
                   </legend>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="text-sm font-semibold" style={{ color: INK }}>
-                        Latitude
-                      </span>
-                      <input
-                        className={fieldClass}
-                        style={{ ...fieldStyle, fontFamily: "'IBM Plex Mono', monospace" }}
-                        step="any"
-                        type="number"
-                        value={form.locationLat}
-                        onChange={(event) =>
-                          updateForm("locationLat", event.target.value)
-                        }
-                        required
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-semibold" style={{ color: INK }}>
-                        Longitude
-                      </span>
-                      <input
-                        className={fieldClass}
-                        style={{ ...fieldStyle, fontFamily: "'IBM Plex Mono', monospace" }}
-                        step="any"
-                        type="number"
-                        value={form.locationLng}
-                        onChange={(event) =>
-                          updateForm("locationLng", event.target.value)
-                        }
-                        required
-                      />
-                    </label>
-                  </div>
+                  <LocationPicker
+                    latitude={form.locationLat}
+                    longitude={form.locationLng}
+                    onChange={(lat, lng) => {
+                      updateForm("locationLat", lat);
+                      updateForm("locationLng", lng);
+                    }}
+                    buttonLabel="Use my current location"
+                  />
+
+                  <details className="group">
+                    <summary
+                      className="cursor-pointer text-sm font-semibold"
+                      style={{ color: KRAFT }}
+                    >
+                      Enter coordinates manually instead
+                    </summary>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="text-sm font-semibold" style={{ color: INK }}>
+                          Latitude
+                        </span>
+                        <input
+                          className={fieldClass}
+                          style={{ ...fieldStyle, fontFamily: "'IBM Plex Mono', monospace" }}
+                          step="any"
+                          type="number"
+                          value={form.locationLat}
+                          onChange={(event) =>
+                            updateForm("locationLat", event.target.value)
+                          }
+                          required
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-sm font-semibold" style={{ color: INK }}>
+                          Longitude
+                        </span>
+                        <input
+                          className={fieldClass}
+                          style={{ ...fieldStyle, fontFamily: "'IBM Plex Mono', monospace" }}
+                          step="any"
+                          type="number"
+                          value={form.locationLng}
+                          onChange={(event) =>
+                            updateForm("locationLng", event.target.value)
+                          }
+                          required
+                        />
+                      </label>
+                    </div>
+                  </details>
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <label className="block">
@@ -582,8 +601,8 @@ export default function PersonalSellerDashboardPage() {
 
               {isPreview ? (
                 <p className="mt-4 text-sm leading-6" style={{ color: "#B7C0BA" }}>
-                  Preview accounts can't load real tickets. Sign in with a
-                  seller account to post and manage material batches.
+                  Preview accounts can't load real tickets. Sign in with your
+                  account to post and manage material batches.
                 </p>
               ) : loadingListings ? (
                 <p className="mt-4 text-sm" style={{ color: "#B7C0BA" }}>

@@ -2,12 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import {
-  useAuth,
-  type SellerAccountType,
-  type User,
-  type UserType,
-} from "@/src/context/AuthContext";
+import { useAuth, type User, type UserType } from "@/src/context/AuthContext";
 
 export function LoadingScreen() {
   return (
@@ -19,15 +14,15 @@ export function LoadingScreen() {
 
 /**
  * Resolves where a user should land after login/preview.
- * Sellers split further by sellerProfile.accountType — Business sellers
- * go to /dashboard/business, everyone else (including a Personal seller,
- * or a seller with no sellerProfile loaded yet) goes to /dashboard/personal.
+ * PERSONAL and BUSINESS are now separate top-level userType values, so this
+ * is a straight lookup — no more branching through a sellerProfile.
  */
 export function getDashboardPath(user: User): string {
-  if (user.userType === "SELLER" && user.sellerProfile) {
-    return user.sellerProfile?.accountType === "BUSINESS"
-      ? "/dashboard/business"
-      : "/dashboard/personal";
+  if (user.userType === "PERSONAL") {
+    return "/dashboard/personal";
+  }
+  if (user.userType === "BUSINESS") {
+    return "/dashboard/business";
   }
   if (user.userType === "BUYER") {
     return "/buyer";
@@ -37,26 +32,15 @@ export function getDashboardPath(user: User): string {
 
 export function ProtectedRoute({
   allowedUserType,
-  allowedAccountType,
   children,
 }: {
   allowedUserType: UserType;
-  // Only checked when allowedUserType is "SELLER". Omit to allow either
-  // account type through (e.g. a shared seller-only layout).
-  allowedAccountType?: SellerAccountType;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const { user, loading } = useAuth();
 
-  const userTypeMismatch = !!user && user.userType !== allowedUserType;
-  const accountTypeMismatch =
-    !!user &&
-    !userTypeMismatch &&
-    allowedUserType === "SELLER" &&  
-    allowedAccountType !== undefined &&
-    user.sellerProfile?.accountType !== allowedAccountType;
-  const mismatch = userTypeMismatch || accountTypeMismatch;
+  const mismatch = !!user && user.userType !== allowedUserType;
 
   useEffect(() => {
     if (loading) {
