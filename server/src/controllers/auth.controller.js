@@ -1,3 +1,5 @@
+const { ensureUniqueCode } = require('../services/points.service')
+
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');
@@ -25,7 +27,8 @@ const registerSchema = z.object({
   phoneNumber: z.string().regex(/^\+2547\d{8}$/, 'Use format +254701234567'),
   name: z.string().min(2),
   password: z.string().min(6),
-  userType: z.enum(['PERSONAL', 'BUSINESS', 'BUYER']),
+  userType: z.enum(['SELLER', 'BUYER', 'PERSONAL', 'BUSINESS']),
+  accountType: z.enum(['PERSONAL', 'BUSINESS']).optional(),
   businessName: z.string().optional(),
   registrationNo: z.string().optional(),
   companyName: z.string().optional(),
@@ -41,25 +44,32 @@ const register = async (req, res, next) => {
     const data = registerSchema.parse(req.body);
     const passwordHash = await bcrypt.hash(data.password, 12);
 
-    const isListerAccount = data.userType === 'PERSONAL' || data.userType === 'BUSINESS';
+    // Frontend sends PERSONAL or BUSINESS as userType
+    // but database only knows SELLER — convert it here
+    const dbUserType = (data.userType === 'PERSONAL' || data.userType === 'BUSINESS') 
+      ? 'SELLER' 
+      : data.userType;
+
+    // Derive accountType from userType if not explicitly provided
+    const accountType = data.accountType || 
+      (data.userType === 'BUSINESS' ? 'BUSINESS' : 'PERSONAL');
 
     const user = await prisma.user.create({
       data: {
         phoneNumber: data.phoneNumber,
         name: data.name,
-        userType: data.userType,
+        userType: dbUserType,  // always SELLER, BUYER, or ADMIN
         passwordHash,
-        ...(isListerAccount && {
+        ...(dbUserType === 'SELLER' && {
           sellerProfile: {
             create: {
-              // accountType mirrors the top-level userType now
-              accountType: data.userType,
+              accountType,
               businessName: data.businessName,
               registrationNo: data.registrationNo,
             },
           },
         }),
-        ...(data.userType === 'BUYER' && {
+        ...(dbUserType === 'BUYER' && {
           buyerProfile: {
             create: {
               companyName: data.companyName || '',
@@ -70,13 +80,14 @@ const register = async (req, res, next) => {
           },
         }),
       },
-      select: { 
-        id: true, 
-        name: true, 
-        phoneNumber: true, 
-        userType: true 
+      select: {
+        id: true, name: true, phoneNumber: true, userType: true
       },
     });
+
+    if (dbUserType === 'SELLER' && accountType === 'PERSONAL') {
+      await ensureUniqueCode(user.id);
+    }
 
     const token = signToken(user.id);
     sendTokenCookie(res, token);

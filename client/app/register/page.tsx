@@ -54,9 +54,9 @@ export default function RegisterPage() {
         userType,
         ...(isBusiness ? { businessName, registrationNo } : {}),
       });
-      // The register response doesn't include accountProfile (unlike login),
+      // The register response doesn't include sellerProfilee (unlike login),
       // so for personal/business accounts we route off what the form already
-      // knows rather than user.accountProfile — getDashboardPath still
+      // knows rather than user.sellerProfilee — getDashboardPath still
       // handles buyer/admin.
       const redirectPath =
         userType === "PERSONAL"

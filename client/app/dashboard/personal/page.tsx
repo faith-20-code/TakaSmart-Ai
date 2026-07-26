@@ -7,6 +7,7 @@ import { ProtectedRoute } from "@/src/components/ProtectedRoute";
 import { useAuth } from "@/src/context/AuthContext";
 import { apiClient } from "@/src/lib/api";
 
+
 async function uploadImage(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("image", file);
@@ -141,7 +142,7 @@ export default function PersonalDashboardPage() {
   }
 
   useEffect(() => {
-    if (user?.userType === "PERSONAL" && !user.id.startsWith("preview-")) {
+    if (user?.userType === "SELLER" && !user.id.startsWith("preview-")) {
       void loadListings();
     } else {
       setLoadingListings(false);
@@ -216,7 +217,7 @@ export default function PersonalDashboardPage() {
   }
 
   const isPreview = !!user?.id.startsWith("preview-");
-  const points = user?.accountProfile?.points ?? 0;
+  const points = user?.sellerProfile?.points ?? 0;
 
   return (
     <ProtectedRoute allowedUserType="PERSONAL">

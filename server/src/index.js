@@ -11,7 +11,9 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const uploadRoutes = require('./routes/upload.routes');
 const collectionPointRoutes = require('./routes/collectionPoint.routes');
-
+const dropoffRoutes = require('./routes/dropoff.routes');
+const pointsRoutes = require('./routes/points.routes');
+const userRoutes = require('./routes/user.routes');
 
 
 const allowedOrigins = process.env.CLIENT_URL
@@ -32,16 +34,13 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-
-
 app.use('/api/auth', authRoutes);
 app.use('/api/listings', listingRoutes);
 app.use('/api/collection-points', collectionPointRoutes);
-
-
-
-// add this line with your other app.use routes
 app.use('/api/upload', uploadRoutes);
+app.use('/api/dropoffs', dropoffRoutes);
+app.use('/api/points', pointsRoutes);
+app.use('/api/users', userRoutes);
 
 // Error handler must always be last
 app.use(errorHandler);

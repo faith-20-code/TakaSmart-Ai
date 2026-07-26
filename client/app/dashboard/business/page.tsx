@@ -7,6 +7,8 @@ import { ProtectedRoute } from "@/src/components/ProtectedRoute";
 import { useAuth } from "@/src/context/AuthContext";
 import { apiClient } from "@/src/lib/api";
 
+
+
 async function uploadImage(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("image", file);
@@ -167,8 +169,8 @@ export default function BusinessDashboardPage() {
   const [cpError, setCpError] = useState("");
 
   const isPreview = !!user?.id.startsWith("preview-");
-  const points = user?.accountProfile?.points ?? 0;
-  const isVerified = !!user?.accountProfile?.registrationNo;
+  const points = user?.sellerProfile?.points ?? 0;
+  const isVerified = !!user?.sellerProfile?.registrationNo;
 
   async function loadListings() {
     try {
@@ -197,7 +199,7 @@ export default function BusinessDashboardPage() {
   }
 
   useEffect(() => {
-    if (user?.userType === "BUSINESS" && !isPreview) {
+    if (user?.userType === "SELLER" && !isPreview) {
       void loadListings();
       void loadCollectionPoints();
     } else {
@@ -357,10 +359,10 @@ export default function BusinessDashboardPage() {
                 className="mt-3 text-lg leading-tight"
                 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: INK }}
               >
-                {user?.accountProfile?.businessName || "Business name not set"}
+                {user?.sellerProfile?.businessName || "Business name not set"}
               </p>
               <p className="mt-1 text-[11px]" style={{ color: "#5B5B54" }}>
-                Reg. No. {user?.accountProfile?.registrationNo || "—"}
+                Reg. No. {user?.sellerProfile?.registrationNo || "—"}
               </p>
               {isVerified ? (
                 <span

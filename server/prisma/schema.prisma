@@ -76,6 +76,9 @@ model User {
   receivedMessages Message[]         @relation("ReceivedMessages")
   interests        ExpressInterest[] @relation("BuyerInterests")
   collectionPoints CollectionPoint[]
+  dropOffs         DropOff[]
+  vouchers         Voucher[]
+  pointsBalances PointsBalance[]
 }
 
   
@@ -84,6 +87,7 @@ model User {
 model SellerProfile {
   id             String      @id @default(cuid())
   userId         String      @unique
+  uniqueCode    String?  @unique
   user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   accountType    AccountType @default(PERSONAL)
   businessName   String?
@@ -162,6 +166,46 @@ model CollectionPoint {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  dropOffs    DropOff[]
+  pointsBalances PointsBalance[]
+}
+
+model DropOff {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  collectionPointId String
+  collectionPoint  CollectionPoint @relation(fields: [collectionPointId], references: [id])
+  materialType     MaterialType
+  quantityKg       Float
+  pointsAwarded    Int
+  loggedBy         String   // business staff's userId
+  createdAt        DateTime @default(now())
+}
+
+model PointsBalance {
+  id                String          @id @default(cuid())
+  userId            String
+  user              User            @relation(fields: [userId], references: [id])
+  collectionPointId String
+  collectionPoint   CollectionPoint @relation(fields: [collectionPointId], references: [id])
+  points            Int             @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([userId, collectionPointId])
+}
+
+model Voucher {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  pointsUsed  Int
+  value       Int      // KES value e.g. 500
+  partner     String   // e.g. "Carrefour"
+  code        String   @unique
+  redeemed    Boolean  @default(false)
+  createdAt   DateTime @default(now())
 }
 
 model Message {

@@ -110,6 +110,68 @@ const expressInterest = async (req, res, next) => {
   }
 };
 
+const getListingInterests = async (req, res, next) => {
+  try {
+    const listing = await prisma.listing.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!listing || listing.sellerId !== req.user.id) {
+      return res.status(403).json({ error: 'Not your listing.' });
+    }
+
+    const interests = await prisma.expressInterest.findMany({
+      where: { listingId: req.params.id },
+      include: {
+        buyer: {
+          select: {
+            name: true,
+            phoneNumber: true,
+            buyerProfile: {
+              select: { companyName: true, materialsAccepted: true }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({ interests });
+  } catch (err) { next(err); }
+};
+
+
+const respondToInterest = async (req, res, next) => {
+  try {
+    const { status } = req.body; // ACCEPTED or REJECTED
+
+    const interest = await prisma.expressInterest.update({
+      where: { id: req.params.interestId },
+      data: { status },
+      include: {
+        buyer: { select: { id: true, name: true } },
+      },
+    });
+
+    // Notify the buyer
+    await prisma.notification.create({
+      data: {
+        userId: interest.buyerId,
+        title: status === 'ACCEPTED' ? 'Interest accepted!' : 'Interest update',
+        body: status === 'ACCEPTED'
+          ? 'The seller accepted your interest. Contact them to arrange collection.'
+          : 'The seller has declined your interest on this listing.',
+        type: 'INTEREST_ACCEPTED',
+        data: { listingId: req.params.id, interestId: interest.id },
+      },
+    });
+
+    res.json({ message: `Interest ${status.toLowerCase()}`, interest });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const getListingById = async (req, res, next) => {
   try {
     const listing = await prisma.listing.findUnique({
@@ -131,4 +193,4 @@ const getListingById = async (req, res, next) => {
   }
 };
 
-module.exports = { createListing, getListings, getMyListings, expressInterest, getListingById };
+module.exports = { createListing, getListings, getMyListings, expressInterest, getListingById, getListingInterests, respondToInterest };
