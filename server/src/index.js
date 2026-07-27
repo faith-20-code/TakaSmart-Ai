@@ -14,6 +14,8 @@ const collectionPointRoutes = require('./routes/collectionPoint.routes');
 const dropoffRoutes = require('./routes/dropoff.routes');
 const pointsRoutes = require('./routes/points.routes');
 const userRoutes = require('./routes/user.routes');
+const eprRoutes = require('./routes/epr.routes');
+const aiRoutes = require('./routes/ai.routes');
 
 
 const allowedOrigins = process.env.CLIENT_URL
@@ -41,6 +43,8 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/dropoffs', dropoffRoutes);
 app.use('/api/points', pointsRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/epr', eprRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Error handler must always be last
 app.use(errorHandler);

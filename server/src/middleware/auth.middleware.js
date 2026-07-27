@@ -40,7 +40,12 @@ const protect = async (req, res, next) => {
 
 const restrictTo = (...roles) => {
   return (req, res, next) => {
-    if (!roles.includes(req.user.userType)) {
+    // SELLER covers both PERSONAL and BUSINESS accounts
+    const effectiveRoles = roles.map(r => 
+      (r === 'PERSONAL' || r === 'BUSINESS') ? 'SELLER' : r
+    );
+    
+    if (!effectiveRoles.includes(req.user.userType)) {
       return res.status(403).json({ error: 'You do not have permission.' });
     }
     next();

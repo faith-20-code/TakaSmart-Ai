@@ -2,9 +2,10 @@ const prisma = require('../config/prisma');
 
 const createListing = async (req, res, next) => {
   try {
-    const { 
-      title, description, materialType, quantityKg, 
-      images, locationLat, locationLng, plusCode, areaName 
+    const {
+      title, description, materialType, quantityKg,
+      images, locationLat, locationLng, plusCode, areaName,
+      aiPriceMin, aiPriceMax, condition, conditionNote,
     } = req.body;
 
     const expiresAt = new Date();
@@ -22,6 +23,10 @@ const createListing = async (req, res, next) => {
         locationLng: parseFloat(locationLng),
         plusCode,
         areaName,
+        aiPriceMin: aiPriceMin ? parseFloat(aiPriceMin) : null,
+        aiPriceMax: aiPriceMax ? parseFloat(aiPriceMax) : null,
+        condition: condition || null,
+        conditionNote: conditionNote || null,
         expiresAt,
       },
       include: { seller: { select: { name: true, phoneNumber: true } } },
@@ -143,15 +148,37 @@ const getListingInterests = async (req, res, next) => {
 
 const respondToInterest = async (req, res, next) => {
   try {
-    const { status } = req.body; // ACCEPTED or REJECTED
+    const { status } = req.body;
 
     const interest = await prisma.expressInterest.update({
       where: { id: req.params.interestId },
       data: { status },
       include: {
         buyer: { select: { id: true, name: true } },
+        listing: { select: { materialType: true, quantityKg: true, sellerId: true } },
       },
     });
+
+    // If accepted, mark listing as COMPLETED
+    if (status === 'ACCEPTED') {
+      await prisma.listing.update({
+        where: { id: req.params.id },
+        data: { status: 'COMPLETED' },
+      });
+    }
+
+    // Auto-log as outgoing waste for EPR
+    if (status === 'ACCEPTED') {
+      await prisma.outgoingWasteLog.create({
+        data: {
+          businessId: interest.listing.sellerId,
+          listingId: req.params.id,
+          buyerId: interest.buyerId,
+          materialType: interest.listing.materialType,
+          quantityKg: interest.listing.quantityKg,
+        },
+      });
+    }
 
     // Notify the buyer
     await prisma.notification.create({

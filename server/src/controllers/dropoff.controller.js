@@ -60,6 +60,18 @@ const logDropOff = async (req, res, next) => {
       },
     });
 
+
+    // Auto-log as incoming waste for EPR
+    await prisma.incomingWasteLog.create({
+      data: {
+        businessId: req.user.id,
+        collectionPointId: collectionPoint.id,
+        materialType,
+        quantityKg: parseFloat(quantityKg),
+        sourceDropOffId: dropOff.id,
+      },
+    });
+
     // Add to specific collection point balance
     await prisma.pointsBalance.update({
       where: {
