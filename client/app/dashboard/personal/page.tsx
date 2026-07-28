@@ -1,695 +1,606 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { DashboardShell } from "@/src/components/DashboardShell";
-import { LocationPicker } from "@/src/components/LocationPicker";
+import { NotificationsPanel } from "@/src/components/NotificationsPanel";
 import { ProtectedRoute } from "@/src/components/ProtectedRoute";
+import { TicketIntakeForm } from "@/src/components/tickets/TicketIntakeForm";
+import { TicketsList } from "@/src/components/tickets/TicketsList";
 import { useAuth } from "@/src/context/AuthContext";
-import { apiClient } from "@/src/lib/api";
+import {
+  CREAM,
+  GREEN,
+  INK,
+  KRAFT,
+  KRAFT_LIGHT,
+  OCHRE,
+  PAPER,
+  RUST,
+  TEAL,
+  materialStyles,
+} from "@/src/lib/constants/materials";
+import { useListings } from "@/src/hooks/useListings";
+import { useNotifications } from "@/src/hooks/useNotifications";
+import { usePointsAndVouchers } from "@/src/hooks/usePointsAndVouchers";
 
+// ---------- small shared style helpers ----------
 
-async function uploadImage(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append("image", file);
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/upload/image`, {
-    method: "POST",
-    credentials: "include",
-    body: formData,
-  });
-  if (!res.ok) throw new Error("upload failed");
-  const { url } = await res.json();
-  return url;
-}
-
-const materialTypes = [
-  "PLASTIC",
-  "METAL",
-  "GLASS",
-  "ELECTRONICS",
-  "PAPER",
-  "TEXTILE",
-  "RUBBER",
-  "OTHER",
-] as const;
-
-type MaterialType = (typeof materialTypes)[number];
-
-type Listing = {
-  id: string;
-  title: string;
-  description?: string | null;
-  materialType: MaterialType;
-  quantityKg: number;
-  areaName?: string | null;
-  status: string;
-  createdAt: string;
-  images?: string[];
-  _count?: { interests: number };
-};
-
-type MyListingsResponse = {
-  listings: Listing[];
-};
-
-const MAX_IMAGES = 4;
-
-const initialForm = {
-  title: "",
-  description: "",
-  materialType: "PLASTIC" as MaterialType,
-  quantityKg: "",
-  locationLat: "",
-  locationLng: "",
-  plusCode: "",
-  areaName: "",
-  images: [] as string[],
-};
-
-const INK = "#1B231F";
-const CREAM = "#F6F2E7";
-const PAPER = "#FFFDF8";
-const KRAFT = "#8B6F47";
-const KRAFT_LIGHT = "#DCD0B4";
-const OCHRE = "#C1801F";
-const TEAL = "#1F6E63";
-const RUST = "#AE4530";
-
-const materialStyles: Record<
-  MaterialType,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  PLASTIC: { bg: "#EAF3F1", text: TEAL, border: "#BFDCD5", label: "Plastic" },
-  METAL: { bg: "#EEEEEE", text: "#4A4A48", border: "#D2D2CE", label: "Metal" },
-  GLASS: { bg: "#EAF1F6", text: "#2B5E7A", border: "#C4DBE7", label: "Glass" },
-  ELECTRONICS: {
-    bg: "#EFEDF6",
-    text: "#4B3E82",
-    border: "#D2CBE9",
-    label: "Electronics",
-  },
-  PAPER: { bg: "#F6F0E3", text: KRAFT, border: KRAFT_LIGHT, label: "Paper" },
-  TEXTILE: {
-    bg: "#F7EBEA",
-    text: "#8C3B33",
-    border: "#E7C9C5",
-    label: "Textile",
-  },
-  RUBBER: { bg: "#EAEAE6", text: INK, border: "#D3D3CB", label: "Rubber" },
-  OTHER: { bg: "#F1F1EC", text: "#5B5B54", border: "#D9D9CF", label: "Other" },
-};
-
-function statusStyle(status: string) {
-  const s = status.toUpperCase();
-  if (s === "OPEN" || s === "ACTIVE") return { text: TEAL, border: TEAL };
-  if (s === "PENDING" || s === "RESERVED")
-    return { text: OCHRE, border: OCHRE };
-  if (s === "CLOSED" || s === "SOLD") return { text: RUST, border: RUST };
-  return { text: INK, border: KRAFT };
-}
-
-function ticketSerial(id: string) {
-  return id.replace(/-/g, "").slice(-6).toUpperCase();
-}
-
-const fieldClass =
-  "mt-2 h-11 w-full rounded-sm border bg-white px-3 text-sm outline-none transition";
-const fieldStyle = { borderColor: KRAFT_LIGHT, color: INK };
-const labelClass =
-  "text-[11px] font-semibold uppercase tracking-[0.16em]";
-const labelStyle = { color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" };
+const mono = "'IBM Plex Mono', monospace";
+const serif = "'Fraunces', serif";
+const eyebrowClass = "text-[11px] font-semibold uppercase tracking-[0.24em]";
+const eyebrowStyle = { color: OCHRE, fontFamily: mono };
 
 export default function PersonalDashboardPage() {
   const { user, logout } = useAuth();
-  const [form, setForm] = useState(initialForm);
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [loadingListings, setLoadingListings] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [photoError, setPhotoError] = useState("");
-  const [uploadingPhotos, setUploadingPhotos] = useState(false);
 
-  async function loadListings() {
-    try {
-      setLoadingListings(true);
-      const response = await apiClient.get<MyListingsResponse>("/listings/my");
-      setListings(response.listings);
-    } catch {
-      setError("Could not load your listings yet.");
-    } finally {
-      setLoadingListings(false);
-    }
-  }
+  const {
+    form,
+    updateForm,
+    listings,
+    loadingListings,
+    submitting,
+    message,
+    error,
+    photoError,
+    uploadingPhotos,
+    handlePhotoSelect,
+    removePhoto,
+    handleSubmit,
+    analysis,
+    analysing,
+    analyseError,
+    handleAnalyse,
+    formStep,
+    skipToStep2,
+    backToStep1,
+  } = useListings(user);
 
-  useEffect(() => {
-    if (user?.userType === "SELLER" && !user.id.startsWith("preview-")) {
-      void loadListings();
-    } else {
-      setLoadingListings(false);
-    }
-  }, [user?.id, user?.userType]);
+  const {
+    collectionPoints,
+    loadingCollectionPoints,
+    balances,
+    loadingBalances,
+    vouchers,
+    loadingVouchers,
+    registeringAt,
+    registerMessage,
+    registerError,
+    registerAtCollectionPoint,
+    redeemingAt,
+    redeemMessage,
+    redeemError,
+    newVoucherCode,
+    redeemPoints,
+  } = usePointsAndVouchers(user?.id);
 
-  function updateForm(field: keyof typeof initialForm, value: string) {
-    setForm((current) => ({ ...current, [field]: value }));
-  }
-
-  async function handlePhotoSelect(event: ChangeEvent<HTMLInputElement>) {
-    setPhotoError("");
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    const remainingSlots = MAX_IMAGES - form.images.length;
-    if (remainingSlots <= 0) {
-      setPhotoError(`You've attached the maximum of ${MAX_IMAGES} photos.`);
-      event.target.value = "";
-      return;
-    }
-
-    const selected = Array.from(files).slice(0, remainingSlots);
-
-    try {
-      setUploadingPhotos(true);
-      const urls = await Promise.all(selected.map((file) => uploadImage(file)));
-      setForm((current) => ({
-        ...current,
-        images: [...current.images, ...urls],
-      }));
-    } catch {
-      setPhotoError("Could not upload one of those photos. Try again.");
-    } finally {
-      setUploadingPhotos(false);
-      event.target.value = "";
-    }
-  }
-
-  function removePhoto(index: number) {
-    setForm((current) => ({
-      ...current,
-      images: current.images.filter((_, i) => i !== index),
-    }));
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setMessage("");
-    setSubmitting(true);
-
-    try {
-      await apiClient.post("/listings", {
-        ...form,
-        quantityKg: Number(form.quantityKg),
-        locationLat: Number(form.locationLat),
-        locationLng: Number(form.locationLng),
-        images: form.images,
-        description: form.description || undefined,
-        plusCode: form.plusCode || undefined,
-        areaName: form.areaName || undefined,
-      });
-      setForm(initialForm);
-      setMessage("Ticket posted. It's live on the buyer floor now.");
-      await loadListings();
-    } catch {
-      setError("Could not post the listing. Check the fields and try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  const {
+    notifications,
+    unreadCount,
+    loading: loadingNotifications,
+    markRead,
+    markAllRead,
+  } = useNotifications(user?.id);
 
   const isPreview = !!user?.id.startsWith("preview-");
-  const points = user?.sellerProfile?.points ?? 0;
+  const globalPoints = user?.sellerProfile?.points ?? 0;
+  const uniqueCode = user?.sellerProfile?.uniqueCode;
 
   return (
     <ProtectedRoute allowedUserType="PERSONAL">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
-      `}</style>
       <DashboardShell
-        eyebrow="Intake ledger"
+        eyebrow="Personal dashboard"
         title={`Welcome${user ? `, ${user.name}` : ""}`}
-        description="Weigh in a new batch, attach photos, and track every ticket you've opened on the buyer floor."
+        description="Weigh in a new batch, earn points at collection points, and redeem vouchers."
         userName={user?.name}
+        userType={user?.userType}
         onLogout={() => void logout()}
       >
         <div
-          className="min-h-full"
+          className="min-h-full space-y-6"
           style={{ fontFamily: "'IBM Plex Sans', sans-serif", background: CREAM }}
         >
-          {/* Ledger summary: points balance + notifications */}
-          <div className="grid gap-6 p-1 lg:grid-cols-2">
+
+          {/* ── Row 1: Unique code + Points summary + Notifications ── */}
+          <div className="grid gap-6 p-1 lg:grid-cols-3">
+
+            {/* 1a — Unique drop-off code */}
             <section
               className="rounded-md border p-6"
               style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
             >
-              <p
-                className="text-[11px] font-semibold uppercase tracking-[0.24em]"
-                style={{ color: OCHRE, fontFamily: "'IBM Plex Mono', monospace" }}
-              >
+              <p className={eyebrowClass} style={eyebrowStyle}>
+                Your drop-off code
+              </p>
+              {uniqueCode ? (
+                <>
+                  <p
+                    className="mt-3 text-[40px] leading-none tracking-widest"
+                    style={{ fontFamily: mono, fontWeight: 600, color: TEAL }}
+                  >
+                    {uniqueCode}
+                  </p>
+                  <p className="mt-3 text-sm leading-6" style={{ color: "#5B5B54" }}>
+                    Show this code at any registered collection point when
+                    dropping off recyclables.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div
+                    className="mt-3 h-10 w-32 animate-pulse rounded-sm"
+                    style={{ background: KRAFT_LIGHT }}
+                  />
+                  <p className="mt-3 text-sm leading-6" style={{ color: "#5B5B54" }}>
+                    Your code is being generated — refresh in a moment.
+                  </p>
+                </>
+              )}
+            </section>
+
+            {/* 1b — Global points balance */}
+            <section
+              className="rounded-md border p-6"
+              style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
+            >
+              <p className={eyebrowClass} style={eyebrowStyle}>
                 Points balance
               </p>
               <div className="mt-3 flex items-baseline gap-2">
                 <span
                   className="text-[40px] leading-none"
-                  style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: INK }}
+                  style={{ fontFamily: serif, fontWeight: 600, color: INK }}
                 >
-                  {points.toLocaleString()}
+                  {globalPoints.toLocaleString()}
                 </span>
                 <span
                   className="text-sm font-semibold uppercase tracking-[0.08em]"
-                  style={{ color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" }}
+                  style={{ color: KRAFT, fontFamily: mono }}
                 >
-                  pts
+                  pts total
                 </span>
               </div>
               <p className="mt-2 text-sm leading-6" style={{ color: "#5B5B54" }}>
                 {isPreview
                   ? "Preview accounts don't accrue real points."
-                  : "Earned from completed tickets on the buyer floor."}
+                  : "Earned across all your registered collection points."}
               </p>
             </section>
 
-            <section
-              className="rounded-md border p-6"
-              style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
-            >
-              <p
-                className="text-[11px] font-semibold uppercase tracking-[0.24em]"
-                style={{ color: OCHRE, fontFamily: "'IBM Plex Mono', monospace" }}
-              >
-                Notifications
-              </p>
-              <div
-                className="mt-3 rounded-sm border border-dashed p-5 text-center"
-                style={{ borderColor: KRAFT_LIGHT }}
-              >
-                <p
-                  className="text-sm font-semibold uppercase tracking-[0.1em]"
-                  style={{ color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" }}
-                >
-                  Coming soon
-                </p>
-                <p className="mt-2 text-sm leading-6" style={{ color: "#5B5B54" }}>
-                  Notifications aren&apos;t live yet — this panel is ready for
-                  when the backend endpoint ships.
-                </p>
-              </div>
-            </section>
+            {/* 1c — Notifications */}
+            <NotificationsPanel
+              notifications={notifications}
+              unreadCount={unreadCount}
+              loading={loadingNotifications}
+              isPreview={isPreview}
+              onMarkRead={markRead}
+              onMarkAllRead={markAllRead}
+            />
           </div>
 
-          <div className="mt-6 grid gap-6 p-1 lg:grid-cols-[1fr_0.62fr]">
-            {/* Intake form */}
-            <section
+          {/* ── Row 2: Browse collection points ── */}
+          <section className="p-1">
+            <div
               className="rounded-md border p-6"
               style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
             >
-              <p
-                className="text-[11px] font-semibold uppercase tracking-[0.24em]"
-                style={{ color: OCHRE, fontFamily: "'IBM Plex Mono', monospace" }}
-              >
-                Open a new ticket
+              <p className={eyebrowClass} style={eyebrowStyle}>
+                Collection points
               </p>
               <h2
-                className="mt-2 text-[26px] leading-tight"
-                style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: INK }}
+                className="mt-2 text-[22px] leading-tight"
+                style={{ fontFamily: serif, fontWeight: 600, color: INK }}
               >
-                Weigh in a batch
+                Browse &amp; register
               </h2>
-              <p className="mt-2 max-w-xl text-sm leading-6" style={{ color: "#5B5B54" }}>
-                Fill in the slip below. Once posted, buyers see it live on the
-                marketplace floor.
+              <p className="mt-1 text-sm leading-6" style={{ color: "#5B5B54" }}>
+                Register at a collection point near you, then drop off
+                recyclables to earn points.
               </p>
 
-              <form onSubmit={handleSubmit} className="mt-6 grid gap-6">
-                {/* 01 Batch details */}
-                <fieldset className="grid gap-4 border-t pt-5" style={{ borderColor: KRAFT_LIGHT }}>
-                  <legend className={labelClass} style={labelStyle}>
-                    01 — Batch details
-                  </legend>
-
-                  <label className="block">
-                    <span className="text-sm font-semibold" style={{ color: INK }}>
-                      Title
-                    </span>
-                    <input
-                      className={fieldClass}
-                      style={fieldStyle}
-                      value={form.title}
-                      onChange={(event) => updateForm("title", event.target.value)}
-                      placeholder="42 kg PET bottles"
-                      required
-                    />
-                  </label>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="text-sm font-semibold" style={{ color: INK }}>
-                        Material
-                      </span>
-                      <select
-                        className={fieldClass}
-                        style={fieldStyle}
-                        value={form.materialType}
-                        onChange={(event) =>
-                          updateForm("materialType", event.target.value)
-                        }
-                      >
-                        {materialTypes.map((type) => (
-                          <option key={type} value={type}>
-                            {materialStyles[type].label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-semibold" style={{ color: INK }}>
-                        Quantity (kg)
-                      </span>
-                      <input
-                        className={fieldClass}
-                        style={{ ...fieldStyle, fontFamily: "'IBM Plex Mono', monospace" }}
-                        min="0.1"
-                        step="0.1"
-                        type="number"
-                        value={form.quantityKg}
-                        onChange={(event) =>
-                          updateForm("quantityKg", event.target.value)
-                        }
-                        required
-                      />
-                    </label>
-                  </div>
-
-                  <label className="block">
-                    <span className="text-sm font-semibold" style={{ color: INK }}>
-                      Description
-                    </span>
-                    <textarea
-                      className="mt-2 min-h-24 w-full rounded-sm border bg-white px-3 py-3 text-sm outline-none transition"
-                      style={fieldStyle}
-                      value={form.description}
-                      onChange={(event) =>
-                        updateForm("description", event.target.value)
-                      }
-                      placeholder="Condition, packaging, pickup notes"
-                    />
-                  </label>
-                </fieldset>
-
-                {/* 02 Location */}
-                <fieldset className="grid gap-4 border-t pt-5" style={{ borderColor: KRAFT_LIGHT }}>
-                  <legend className={labelClass} style={labelStyle}>
-                    02 — Pickup location
-                  </legend>
-
-                  <LocationPicker
-                    latitude={form.locationLat}
-                    longitude={form.locationLng}
-                    onChange={(lat, lng) => {
-                      updateForm("locationLat", lat);
-                      updateForm("locationLng", lng);
-                    }}
-                    buttonLabel="Use my current location"
-                  />
-
-                  <details className="group">
-                    <summary
-                      className="cursor-pointer text-sm font-semibold"
-                      style={{ color: KRAFT }}
-                    >
-                      Enter coordinates manually instead
-                    </summary>
-                    <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                      <label className="block">
-                        <span className="text-sm font-semibold" style={{ color: INK }}>
-                          Latitude
-                        </span>
-                        <input
-                          className={fieldClass}
-                          style={{ ...fieldStyle, fontFamily: "'IBM Plex Mono', monospace" }}
-                          step="any"
-                          type="number"
-                          value={form.locationLat}
-                          onChange={(event) =>
-                            updateForm("locationLat", event.target.value)
-                          }
-                          required
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-sm font-semibold" style={{ color: INK }}>
-                          Longitude
-                        </span>
-                        <input
-                          className={fieldClass}
-                          style={{ ...fieldStyle, fontFamily: "'IBM Plex Mono', monospace" }}
-                          step="any"
-                          type="number"
-                          value={form.locationLng}
-                          onChange={(event) =>
-                            updateForm("locationLng", event.target.value)
-                          }
-                          required
-                        />
-                      </label>
-                    </div>
-                  </details>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="text-sm font-semibold" style={{ color: INK }}>
-                        Area name
-                      </span>
-                      <input
-                        className={fieldClass}
-                        style={fieldStyle}
-                        value={form.areaName}
-                        onChange={(event) =>
-                          updateForm("areaName", event.target.value)
-                        }
-                        placeholder="Westlands"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-semibold" style={{ color: INK }}>
-                        Plus code
-                      </span>
-                      <input
-                        className={fieldClass}
-                        style={fieldStyle}
-                        value={form.plusCode}
-                        onChange={(event) =>
-                          updateForm("plusCode", event.target.value)
-                        }
-                        placeholder="Optional"
-                      />
-                    </label>
-                  </div>
-                </fieldset>
-
-                {/* 03 Photos */}
-                <fieldset className="grid gap-3 border-t pt-5" style={{ borderColor: KRAFT_LIGHT }}>
-                  <legend className={labelClass} style={labelStyle}>
-                    03 — Photos ({form.images.length}/{MAX_IMAGES})
-                  </legend>
-                  <p className="text-sm leading-6" style={{ color: "#5B5B54" }}>
-                    Clear photos help buyers trust the weight and condition
-                    before they commit.
-                  </p>
-
-                  <div className="flex flex-wrap gap-3">
-                    {form.images.map((src, index) => (
-                      <div
-                        key={index}
-                        className="relative h-24 w-24 overflow-hidden rounded-sm border"
-                        style={{
-                          borderColor: KRAFT_LIGHT,
-                          transform: index % 2 === 0 ? "rotate(-2deg)" : "rotate(2deg)",
-                        }}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={src}
-                          alt={`Attached photo ${index + 1}`}
-                          className="h-full w-full object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removePhoto(index)}
-                          className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                          style={{ background: RUST }}
-                          aria-label={`Remove photo ${index + 1}`}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-
-                    {form.images.length < MAX_IMAGES ? (
-                      <label
-                        className="flex h-24 w-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-sm border border-dashed text-center"
-                        style={{ borderColor: KRAFT, color: KRAFT }}
-                      >
-                        <span className="text-xl leading-none">+</span>
-                        <span
-                          className="text-[10px] font-semibold uppercase tracking-[0.08em]"
-                          style={{ fontFamily: "'IBM Plex Mono', monospace" }}
-                        >
-                          Add photo
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          className="hidden"
-                          onChange={handlePhotoSelect}
-                        />
-                      </label>
-                    ) : null}
-                  </div>
-
-                  {uploadingPhotos ? (
-                    <p className="text-sm" style={{ color: KRAFT }}>
-                      Uploading photo...
-                    </p>
-                  ) : null}
-
-                  {photoError ? (
-                    <p className="text-sm" style={{ color: RUST }}>
-                      {photoError}
-                    </p>
-                  ) : null}
-                </fieldset>
-
-                {message ? (
-                  <p
-                    className="rounded-sm border px-3 py-2 text-sm"
-                    style={{ borderColor: TEAL, color: TEAL, background: "#EAF3F1" }}
-                  >
-                    {message}
-                  </p>
-                ) : null}
-                {error ? (
-                  <p
-                    className="rounded-sm border px-3 py-2 text-sm"
-                    style={{ borderColor: RUST, color: RUST, background: "#FBEFEC" }}
-                  >
-                    {error}
-                  </p>
-                ) : null}
-
-                <button
-                  className="h-11 rounded-sm px-4 text-sm font-semibold uppercase tracking-[0.1em] text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60"
-                  style={{ background: TEAL, fontFamily: "'IBM Plex Mono', monospace" }}
-                  disabled={submitting || uploadingPhotos || isPreview}
-                  type="submit"
+              {/* feedback banners */}
+              {registerMessage ? (
+                <p
+                  className="mt-4 rounded-sm border px-3 py-2 text-sm"
+                  style={{ borderColor: TEAL, color: TEAL, background: "#EAF3F1" }}
                 >
-                  {submitting ? "Posting..." : "Post ticket"}
-                </button>
-              </form>
-            </section>
-
-            {/* My tickets */}
-            <aside
-              className="rounded-md border p-6"
-              style={{ borderColor: KRAFT_LIGHT, background: INK }}
-            >
-              <p
-                className="text-[11px] font-semibold uppercase tracking-[0.24em]"
-                style={{ color: OCHRE, fontFamily: "'IBM Plex Mono', monospace" }}
-              >
-                My tickets
-              </p>
+                  {registerMessage}
+                </p>
+              ) : null}
+              {registerError ? (
+                <p
+                  className="mt-4 rounded-sm border px-3 py-2 text-sm"
+                  style={{ borderColor: RUST, color: RUST, background: "#FBEFEC" }}
+                >
+                  {registerError}
+                </p>
+              ) : null}
 
               {isPreview ? (
-                <p className="mt-4 text-sm leading-6" style={{ color: "#B7C0BA" }}>
-                  Preview accounts can't load real tickets. Sign in with your
-                  account to post and manage material batches.
+                <p className="mt-4 text-sm" style={{ color: "#5B5B54" }}>
+                  Sign in to browse and register at collection points.
                 </p>
-              ) : loadingListings ? (
-                <p className="mt-4 text-sm" style={{ color: "#B7C0BA" }}>
-                  Pulling your ledger...
+              ) : loadingCollectionPoints ? (
+                <p className="mt-4 text-sm" style={{ color: "#5B5B54" }}>
+                  Loading collection points...
                 </p>
-              ) : listings.length === 0 ? (
+              ) : collectionPoints.length === 0 ? (
                 <div
-                  className="mt-4 rounded-sm border border-dashed p-5 text-center"
-                  style={{ borderColor: "#3A453F" }}
+                  className="mt-4 rounded-sm border border-dashed p-6 text-center"
+                  style={{ borderColor: KRAFT_LIGHT }}
                 >
                   <p
                     className="text-sm font-semibold uppercase tracking-[0.1em]"
-                    style={{ color: CREAM, fontFamily: "'IBM Plex Mono', monospace" }}
+                    style={{ color: KRAFT, fontFamily: mono }}
                   >
-                    No tickets yet
+                    No collection points yet
                   </p>
-                  <p className="mt-2 text-sm leading-6" style={{ color: "#B7C0BA" }}>
-                    Post your first batch to start receiving buyer interest.
+                  <p className="mt-2 text-sm" style={{ color: "#5B5B54" }}>
+                    Business partners haven&apos;t added any active sites yet.
+                    Check back soon.
                   </p>
                 </div>
               ) : (
-                <div className="mt-4 space-y-4">
-                  {listings.map((listing) => {
-                    const mat = materialStyles[listing.materialType];
-                    const stat = statusStyle(listing.status);
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {collectionPoints.map((cp) => (
+                    <article
+                      key={cp.id}
+                      className="flex flex-col justify-between rounded-sm border p-4"
+                      style={{ borderColor: KRAFT_LIGHT, background: CREAM }}
+                    >
+                      <div>
+                        <h3
+                          className="text-sm font-semibold leading-snug"
+                          style={{ color: INK, fontFamily: serif }}
+                        >
+                          {cp.name}
+                        </h3>
+                        <p className="mt-1 text-[11px]" style={{ color: "#5B5B54" }}>
+                          {cp.address}
+                          {cp.areaName ? ` · ${cp.areaName}` : ""}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {cp.materials.map((m) => {
+                            const mat = materialStyles[m as keyof typeof materialStyles];
+                            return mat ? (
+                              <span
+                                key={m}
+                                className="rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em]"
+                                style={{ background: mat.bg, color: mat.text }}
+                              >
+                                {mat.label}
+                              </span>
+                            ) : (
+                              <span
+                                key={m}
+                                className="rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em]"
+                                style={{ background: "#F1F1EC", color: "#5B5B54" }}
+                              >
+                                {m}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void registerAtCollectionPoint(cp.id)}
+                        disabled={registeringAt === cp.id}
+                        className="mt-4 h-9 rounded-sm px-3 text-xs font-semibold uppercase tracking-[0.08em] text-white transition disabled:cursor-not-allowed disabled:opacity-60"
+                        style={{ background: TEAL, fontFamily: mono }}
+                      >
+                        {registeringAt === cp.id ? "Registering..." : "Register"}
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* ── Row 3: My points balances ── */}
+          <section className="p-1">
+            <div
+              className="rounded-md border p-6"
+              style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
+            >
+              <p className={eyebrowClass} style={eyebrowStyle}>
+                My points
+              </p>
+              <h2
+                className="mt-2 text-[22px] leading-tight"
+                style={{ fontFamily: serif, fontWeight: 600, color: INK }}
+              >
+                Points per collection point
+              </h2>
+              <p className="mt-1 text-sm leading-6" style={{ color: "#5B5B54" }}>
+                Points are tracked per partner. You need 100 pts at a specific
+                point to redeem a KES 500 voucher there.
+              </p>
+
+              {/* redeem feedback */}
+              {newVoucherCode ? (
+                <div
+                  className="mt-4 rounded-sm border p-4"
+                  style={{ borderColor: GREEN, background: "#EAF6F0" }}
+                >
+                  <p
+                    className="text-[11px] font-semibold uppercase tracking-[0.16em]"
+                    style={{ color: GREEN, fontFamily: mono }}
+                  >
+                    Voucher generated
+                  </p>
+                  <p
+                    className="mt-2 text-[22px] font-bold tracking-wider"
+                    style={{ fontFamily: mono, color: INK }}
+                  >
+                    {newVoucherCode}
+                  </p>
+                  <p className="mt-1 text-sm" style={{ color: "#5B5B54" }}>
+                    Show this code in-store to redeem your reward.
+                  </p>
+                </div>
+              ) : redeemMessage ? (
+                <p
+                  className="mt-4 rounded-sm border px-3 py-2 text-sm"
+                  style={{ borderColor: TEAL, color: TEAL, background: "#EAF3F1" }}
+                >
+                  {redeemMessage}
+                </p>
+              ) : null}
+              {redeemError ? (
+                <p
+                  className="mt-4 rounded-sm border px-3 py-2 text-sm"
+                  style={{ borderColor: RUST, color: RUST, background: "#FBEFEC" }}
+                >
+                  {redeemError}
+                </p>
+              ) : null}
+
+              {isPreview ? (
+                <p className="mt-4 text-sm" style={{ color: "#5B5B54" }}>
+                  Sign in to see your points balances.
+                </p>
+              ) : loadingBalances ? (
+                <p className="mt-4 text-sm" style={{ color: "#5B5B54" }}>
+                  Loading balances...
+                </p>
+              ) : balances.length === 0 ? (
+                <div
+                  className="mt-4 rounded-sm border border-dashed p-6 text-center"
+                  style={{ borderColor: KRAFT_LIGHT }}
+                >
+                  <p
+                    className="text-sm font-semibold uppercase tracking-[0.1em]"
+                    style={{ color: KRAFT, fontFamily: mono }}
+                  >
+                    No balances yet
+                  </p>
+                  <p className="mt-2 text-sm" style={{ color: "#5B5B54" }}>
+                    Register at a collection point above to start earning.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {balances.map((bal) => {
+                    const canRedeem = bal.points >= 100;
                     return (
                       <article
-                        key={listing.id}
-                        className="overflow-hidden rounded-sm border"
-                        style={{ borderColor: "#3A453F", background: PAPER }}
+                        key={bal.id}
+                        className="rounded-sm border p-4"
+                        style={{ borderColor: KRAFT_LIGHT, background: CREAM }}
                       >
-                        <div className="flex">
-                          {listing.images && listing.images.length > 0 ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={listing.images[0]}
-                              alt={listing.title}
-                              className="h-full w-20 flex-shrink-0 object-cover"
-                            />
-                          ) : (
-                            <div
-                              className="flex h-20 w-20 flex-shrink-0 items-center justify-center text-[10px] uppercase tracking-[0.08em]"
-                              style={{
-                                background: mat.bg,
-                                color: mat.text,
-                                fontFamily: "'IBM Plex Mono', monospace",
-                              }}
-                            >
-                              No photo
-                            </div>
-                          )}
-                          <div className="flex-1 px-3 py-2">
-                            <div className="flex items-start justify-between gap-2">
-                              <h3
-                                className="text-sm font-semibold leading-snug"
-                                style={{ color: INK, fontFamily: "'Fraunces', serif" }}
-                              >
-                                {listing.title}
-                              </h3>
-                              <span
-                                className="rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em]"
-                                style={{ color: stat.text, borderColor: stat.border }}
-                              >
-                                {listing.status}
-                              </span>
-                            </div>
-                            <p
-                              className="mt-1 text-[11px] font-medium uppercase tracking-[0.06em]"
-                              style={{ color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" }}
-                            >
-                              {mat.label} · {listing.quantityKg} kg · #
-                              {ticketSerial(listing.id)}
-                            </p>
-                            <p className="mt-1 text-[11px]" style={{ color: "#5B5B54" }}>
-                              {listing.areaName || "No area added"} ·{" "}
-                              {listing._count?.interests ?? 0} interested
-                            </p>
-                          </div>
+                        <h3
+                          className="text-sm font-semibold leading-snug"
+                          style={{ color: INK, fontFamily: serif }}
+                        >
+                          {bal.collectionPoint.name}
+                        </h3>
+                        <p
+                          className="mt-0.5 text-[11px]"
+                          style={{ color: "#5B5B54" }}
+                        >
+                          {bal.collectionPoint.address}
+                          {bal.collectionPoint.areaName
+                            ? ` · ${bal.collectionPoint.areaName}`
+                            : ""}
+                        </p>
+                        <div className="mt-3 flex items-baseline gap-1.5">
+                          <span
+                            className="text-[32px] leading-none"
+                            style={{ fontFamily: mono, fontWeight: 600, color: TEAL }}
+                          >
+                            {bal.points}
+                          </span>
+                          <span
+                            className="text-xs font-semibold uppercase tracking-[0.08em]"
+                            style={{ color: KRAFT, fontFamily: mono }}
+                          >
+                            pts
+                          </span>
                         </div>
+
+                        {/* Progress bar toward 100 pts */}
+                        <div
+                          className="mt-2 h-1.5 w-full overflow-hidden rounded-full"
+                          style={{ background: KRAFT_LIGHT }}
+                        >
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${Math.min(bal.points, 100)}%`,
+                              background: canRedeem ? GREEN : TEAL,
+                            }}
+                          />
+                        </div>
+                        <p
+                          className="mt-1 text-[10px]"
+                          style={{ color: KRAFT, fontFamily: mono }}
+                        >
+                          {canRedeem
+                            ? "Ready to redeem"
+                            : `${100 - bal.points} pts to go`}
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void redeemPoints(
+                              bal.collectionPoint.id,
+                              100,
+                              bal.points,
+                            )
+                          }
+                          disabled={redeemingAt === bal.collectionPoint.id}
+                          className="mt-3 h-9 w-full rounded-sm px-3 text-xs font-semibold uppercase tracking-[0.08em] transition disabled:cursor-not-allowed disabled:opacity-60"
+                          style={{
+                            fontFamily: mono,
+                            background: canRedeem ? TEAL : "white",
+                            color: canRedeem ? "white" : KRAFT,
+                            border: canRedeem ? "none" : `1px solid ${KRAFT_LIGHT}`,
+                          }}
+                        >
+                          {redeemingAt === bal.collectionPoint.id
+                            ? "Redeeming..."
+                            : "Redeem 100 pts → KES 500"}
+                        </button>
                       </article>
                     );
                   })}
                 </div>
               )}
-            </aside>
+            </div>
+          </section>
+
+          {/* ── Row 4: My vouchers ── */}
+          <section className="p-1">
+            <div
+              className="rounded-md border p-6"
+              style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
+            >
+              <p className={eyebrowClass} style={eyebrowStyle}>
+                My vouchers
+              </p>
+              <h2
+                className="mt-2 text-[22px] leading-tight"
+                style={{ fontFamily: serif, fontWeight: 600, color: INK }}
+              >
+                Redeemable rewards
+              </h2>
+              <p className="mt-1 text-sm leading-6" style={{ color: "#5B5B54" }}>
+                Show the voucher code in-store to redeem. Redemption is
+                confirmed by the partner.
+              </p>
+
+              {isPreview ? (
+                <p className="mt-4 text-sm" style={{ color: "#5B5B54" }}>
+                  Sign in to see your vouchers.
+                </p>
+              ) : loadingVouchers ? (
+                <p className="mt-4 text-sm" style={{ color: "#5B5B54" }}>
+                  Loading vouchers...
+                </p>
+              ) : vouchers.length === 0 ? (
+                <div
+                  className="mt-4 rounded-sm border border-dashed p-6 text-center"
+                  style={{ borderColor: KRAFT_LIGHT }}
+                >
+                  <p
+                    className="text-sm font-semibold uppercase tracking-[0.1em]"
+                    style={{ color: KRAFT, fontFamily: mono }}
+                  >
+                    No vouchers yet
+                  </p>
+                  <p className="mt-2 text-sm" style={{ color: "#5B5B54" }}>
+                    Earn 100 points at a collection point to generate your first
+                    voucher.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {vouchers.map((v) => (
+                    <article
+                      key={v.id}
+                      className="rounded-sm border p-4"
+                      style={{
+                        borderColor: v.redeemed ? KRAFT_LIGHT : TEAL,
+                        background: v.redeemed ? CREAM : "#EAF3F1",
+                        opacity: v.redeemed ? 0.7 : 1,
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p
+                            className="text-[11px] font-semibold uppercase tracking-[0.16em]"
+                            style={{ color: OCHRE, fontFamily: mono }}
+                          >
+                            {v.partner}
+                          </p>
+                          <p
+                            className="mt-1 text-lg font-bold tracking-wider"
+                            style={{ fontFamily: mono, color: INK }}
+                          >
+                            {v.code}
+                          </p>
+                        </div>
+                        <span
+                          className="rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em]"
+                          style={{
+                            color: v.redeemed ? RUST : TEAL,
+                            borderColor: v.redeemed ? RUST : TEAL,
+                          }}
+                        >
+                          {v.redeemed ? "Redeemed" : "Active"}
+                        </span>
+                      </div>
+                      <p
+                        className="mt-3 text-[22px] font-bold leading-none"
+                        style={{ fontFamily: serif, color: INK }}
+                      >
+                        KES {v.value.toLocaleString()}
+                      </p>
+                      <p className="mt-1 text-[11px]" style={{ color: "#5B5B54" }}>
+                        {v.pointsUsed} pts used ·{" "}
+                        {new Date(v.createdAt).toLocaleDateString("en-KE", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* ── Row 5: Intake form + ticket list ── */}
+          <div className="grid gap-6 p-1 lg:grid-cols-[1fr_0.62fr]">
+            <TicketIntakeForm
+              form={form}
+              formStep={formStep}
+              submitting={submitting}
+              uploadingPhotos={uploadingPhotos}
+              photoError={photoError}
+              message={message}
+              error={error}
+              isPreview={isPreview}
+              analysis={analysis}
+              analysing={analysing}
+              analyseError={analyseError}
+              onUpdate={updateForm}
+              onPhotoSelect={handlePhotoSelect}
+              onRemovePhoto={removePhoto}
+              onSubmit={handleSubmit}
+              onAnalyse={handleAnalyse}
+              onSkipToStep2={skipToStep2}
+              onBackToStep1={backToStep1}
+            />
+            <TicketsList
+              listings={listings}
+              loadingListings={loadingListings}
+              isPreview={isPreview}
+            />
           </div>
+
         </div>
       </DashboardShell>
     </ProtectedRoute>

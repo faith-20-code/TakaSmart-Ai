@@ -1,27 +1,73 @@
 @import "tailwindcss";
 
+/* ── TakaSmart design tokens ───────────────────────────────────────── */
 :root {
-  --background: #f4f7f1;
-  --foreground: #123526;
+  /* surface */
+  --ts-bg:          #F0F7F4;   /* page background — soft sage */
+  --ts-surface:     #FFFFFF;   /* card / panel surface */
+  --ts-surface-alt: #F6FBF8;   /* slightly tinted surface */
+
+  /* brand greens */
+  --ts-green-900:   #0B2318;
+  --ts-green-800:   #123526;
+  --ts-green-700:   #1A5C3A;
+  --ts-green-600:   #1D9E75;   /* primary action */
+  --ts-green-500:   #27C48F;   /* hover state */
+  --ts-green-100:   #E7F6EF;   /* tinted backgrounds */
+  --ts-green-50:    #F0FAF5;
+
+  /* neutrals */
+  --ts-ink:         #0D1F18;
+  --ts-body:        #2D4A3E;
+  --ts-muted:       #5E7A6E;
+  --ts-border:      #C8DDD5;
+  --ts-border-strong: #8FB5A5;
+
+  /* semantic */
+  --ts-amber:       #D4A017;
+  --ts-red:         #C0392B;
+  --ts-red-bg:      #FDF2F0;
+  --ts-teal:        #1F6E63;
+
+  /* type */
+  --ts-font-display: 'Fraunces', Georgia, serif;
+  --ts-font-body:    'Inter', system-ui, sans-serif;
+  --ts-font-mono:    'JetBrains Mono', 'Fira Code', monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── Base ─────────────────────────────────────────────────────────── */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--ts-bg);
+  color: var(--ts-ink);
+  font-family: var(--ts-font-body);
 }
 
-* {
-  box-sizing: border-box;
-}
-
+/* ── Selection ────────────────────────────────────────────────────── */
 ::selection {
-  background: #c8eadb;
-  color: #0b2318;
+  background: var(--ts-green-100);
+  color: var(--ts-green-900);
+}
+
+/* ── Scrollbar (Webkit) ───────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 6px; height: 6px; }
+::-webkit-scrollbar-track  { background: var(--ts-green-50); }
+::-webkit-scrollbar-thumb  { background: var(--ts-border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ts-muted); }
+
+/* ── Focus visible global ─────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--ts-green-600);
+  outline-offset: 2px;
+}
+
+/* ── Smooth transitions on interactive elements ───────────────────── */
+button, a, input, select, textarea {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
 }

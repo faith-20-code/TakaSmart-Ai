@@ -12,7 +12,13 @@ import {
 import { useRouter } from "next/navigation";
 import { ApiError, apiClient } from "@/src/lib/api";
 
-export type UserType = "SELLER" | "BUYER" | "ADMIN";
+// ---------- types ----------
+
+// Frontend UserType: PERSONAL and BUSINESS replace SELLER.
+// The backend stores SELLER in the DB and returns it from /me, but we
+// normalise it to PERSONAL or BUSINESS here using sellerProfile.accountType
+// so the rest of the app never needs to know about the DB-level SELLER value.
+export type UserType = "PERSONAL" | "BUSINESS" | "BUYER" | "ADMIN";
 
 export type User = {
   id: string;
@@ -26,7 +32,30 @@ export type User = {
     points: number;
     uniqueCode?: string;
   };
+  buyerProfile?: {
+    companyName: string;
+  };
 };
+
+// Raw shape returned by the backend — userType is still the DB enum
+type RawUser = Omit<User, "userType"> & {
+  userType: "SELLER" | "BUYER" | "ADMIN";
+};
+
+// Map SELLER → PERSONAL or BUSINESS using sellerProfile.accountType
+function normaliseUser(raw: RawUser): User {
+  let userType: UserType;
+  if (raw.userType === "SELLER") {
+    userType = raw.sellerProfile?.accountType === "BUSINESS"
+      ? "BUSINESS"
+      : "PERSONAL";
+  } else {
+    userType = raw.userType as "BUYER" | "ADMIN";
+  }
+  return { ...raw, userType };
+}
+
+// ---------- inputs ----------
 
 type LoginInput = {
   phoneNumber: string;
@@ -36,14 +65,16 @@ type LoginInput = {
 type RegisterInput = LoginInput & {
   name: string;
   userType: UserType;
-  accountType?: "PERSONAL" | "BUSINESS";
   businessName?: string;
   registrationNo?: string;
 };
 
-type AuthResponse = {
-  user: User;
+// What the API actually returns
+type RawAuthResponse = {
+  user: RawUser;
 };
+
+// ---------- context ----------
 
 type AuthContextValue = {
   user: User | null;
@@ -64,8 +95,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     try {
-      const response = await apiClient.get<AuthResponse>("/auth/me");
-      setUser(response.user);
+      const response = await apiClient.get<RawAuthResponse>("/auth/me");
+      setUser(normaliseUser(response.user));
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setUser(null);
@@ -85,28 +116,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshUser]);
 
   const login = useCallback(async (input: LoginInput) => {
-    const response = await apiClient.post<AuthResponse>("/auth/login", input);
-    setUser(response.user);
-    return response.user;
+    const response = await apiClient.post<RawAuthResponse>("/auth/login", input);
+    const normalised = normaliseUser(response.user);
+    setUser(normalised);
+    return normalised;
   }, []);
 
   const register = useCallback(async (input: RegisterInput) => {
-    const response = await apiClient.post<AuthResponse>("/auth/register", input);
-    setUser(response.user);
-    return response.user;
+    // Backend accepts PERSONAL / BUSINESS / BUYER directly
+    const response = await apiClient.post<RawAuthResponse>("/auth/register", input);
+    const normalised = normaliseUser(response.user);
+    setUser(normalised);
+    return normalised;
   }, []);
 
-  const previewAs = useCallback((userType: UserType) => {
+  const previewAs = useCallback((userType: UserType): User => {
+    const isPersonal = userType === "PERSONAL";
+    const isBusiness = userType === "BUSINESS";
+    const isSeller = isPersonal || isBusiness;
+
     const previewUser: User = {
       id: `preview-${userType.toLowerCase()}`,
-      name: `Preview ${userType}`,
+      name: `Preview ${userType.charAt(0) + userType.slice(1).toLowerCase()}`,
       phoneNumber: "+254700000000",
       userType,
       verified: true,
-      sellerProfile: userType === "SELLER" ? {
-        accountType: "PERSONAL",
-        points: 0,
-      } : undefined,
+      sellerProfile: isSeller
+        ? {
+            accountType: isBusiness ? "BUSINESS" : "PERSONAL",
+            businessName: isBusiness ? "Demo Business Ltd" : undefined,
+            points: 0,
+            uniqueCode: isPersonal ? "TK-0000" : undefined,
+          }
+        : undefined,
+      buyerProfile: userType === "BUYER"
+        ? { companyName: "Demo Buyer Co." }
+        : undefined,
     };
     setUser(previewUser);
     return previewUser;

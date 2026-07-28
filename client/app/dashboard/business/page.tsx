@@ -1,56 +1,35 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { DashboardShell } from "@/src/components/DashboardShell";
 import { LocationPicker } from "@/src/components/LocationPicker";
 import { ProtectedRoute } from "@/src/components/ProtectedRoute";
+import { TicketIntakeForm } from "@/src/components/tickets/TicketIntakeForm";
+import { TicketsList } from "@/src/components/tickets/TicketsList";
+import { NotificationsPanel } from "@/src/components/NotificationsPanel";
 import { useAuth } from "@/src/context/AuthContext";
-import { apiClient } from "@/src/lib/api";
+import { apiClient, ApiError } from "@/src/lib/api";
+import {
+  materialTypes,
+  MaterialType,
+  materialStyles,
+  INK,
+  CREAM,
+  PAPER,
+  KRAFT,
+  KRAFT_LIGHT,
+  OCHRE,
+  TEAL,
+  RUST,
+  GREEN,
+} from "@/src/lib/constants/materials";
+import { useListings } from "@/src/hooks/useListings";
+import { useNotifications } from "@/src/hooks/useNotifications";
+import { useEPR } from "@/src/hooks/useEPR";
 
-
-
-async function uploadImage(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append("image", file);
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/upload/image`, {
-    method: "POST",
-    credentials: "include",
-    body: formData,
-  });
-  if (!res.ok) throw new Error("upload failed");
-  const { url } = await res.json();
-  return url;
-}
-
-const materialTypes = [
-  "PLASTIC",
-  "METAL",
-  "GLASS",
-  "ELECTRONICS",
-  "PAPER",
-  "TEXTILE",
-  "RUBBER",
-  "OTHER",
-] as const;
-
-type MaterialType = (typeof materialTypes)[number];
-
-type Listing = {
-  id: string;
-  title: string;
-  description?: string | null;
-  materialType: MaterialType;
-  quantityKg: number;
-  areaName?: string | null;
-  status: string;
-  createdAt: string;
-  images?: string[];
-  _count?: { interests: number };
-};
-
-type MyListingsResponse = {
-  listings: Listing[];
-};
+// ---------- business-only types ----------
 
 type CollectionPoint = {
   id: string;
@@ -68,20 +47,6 @@ type MyCollectionPointsResponse = {
   points: CollectionPoint[];
 };
 
-const MAX_IMAGES = 4;
-
-const initialForm = {
-  title: "",
-  description: "",
-  materialType: "PLASTIC" as MaterialType,
-  quantityKg: "",
-  locationLat: "",
-  locationLng: "",
-  plusCode: "",
-  areaName: "",
-  images: [] as string[],
-};
-
 const initialCollectionPointForm = {
   name: "",
   address: "",
@@ -91,76 +56,71 @@ const initialCollectionPointForm = {
   materials: [] as MaterialType[],
 };
 
-const INK = "#1B231F";
-const CREAM = "#F6F2E7";
-const PAPER = "#FFFDF8";
-const KRAFT = "#8B6F47";
-const KRAFT_LIGHT = "#DCD0B4";
-const OCHRE = "#C1801F";
-const TEAL = "#1F6E63";
-const RUST = "#AE4530";
-const GREEN = "#1D9E75";
-
-const materialStyles: Record<
-  MaterialType,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  PLASTIC: { bg: "#EAF3F1", text: TEAL, border: "#BFDCD5", label: "Plastic" },
-  METAL: { bg: "#EEEEEE", text: "#4A4A48", border: "#D2D2CE", label: "Metal" },
-  GLASS: { bg: "#EAF1F6", text: "#2B5E7A", border: "#C4DBE7", label: "Glass" },
-  ELECTRONICS: {
-    bg: "#EFEDF6",
-    text: "#4B3E82",
-    border: "#D2CBE9",
-    label: "Electronics",
-  },
-  PAPER: { bg: "#F6F0E3", text: KRAFT, border: KRAFT_LIGHT, label: "Paper" },
-  TEXTILE: {
-    bg: "#F7EBEA",
-    text: "#8C3B33",
-    border: "#E7C9C5",
-    label: "Textile",
-  },
-  RUBBER: { bg: "#EAEAE6", text: INK, border: "#D3D3CB", label: "Rubber" },
-  OTHER: { bg: "#F1F1EC", text: "#5B5B54", border: "#D9D9CF", label: "Other" },
-};
-
-function statusStyle(status: string) {
-  const s = status.toUpperCase();
-  if (s === "OPEN" || s === "ACTIVE") return { text: TEAL, border: TEAL };
-  if (s === "PENDING" || s === "RESERVED")
-    return { text: OCHRE, border: OCHRE };
-  if (s === "CLOSED" || s === "SOLD") return { text: RUST, border: RUST };
-  return { text: INK, border: KRAFT };
-}
-
-function ticketSerial(id: string) {
-  return id.replace(/-/g, "").slice(-6).toUpperCase();
-}
-
 const fieldClass =
   "mt-2 h-11 w-full rounded-sm border bg-white px-3 text-sm outline-none transition";
 const fieldStyle = { borderColor: KRAFT_LIGHT, color: INK };
 const labelClass = "text-[11px] font-semibold uppercase tracking-[0.16em]";
 const labelStyle = { color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" };
 
-type Tab = "overview" | "collection-points" | "epr-reports";
+type Tab = "overview" | "log-dropoff" | "collection-points" | "epr-reports";
+
+// ---------- drop-off log types ----------
+
+type DropoffLogResponse = {
+  message: string;
+  pointsAwarded: number;
+  userName: string;
+};
+
+const initialDropoffForm = {
+  uniqueCode: "",
+  materialType: "PLASTIC" as MaterialType,
+  quantityKg: "",
+};
+
+// ---------- page ----------
 
 export default function BusinessDashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <BusinessDashboard />
+    </Suspense>
+  );
+}
+
+function BusinessDashboard() {
   const { user, logout } = useAuth();
-  const [tab, setTab] = useState<Tab>("overview");
 
-  // --- Listings / intake form state (same as personal dashboard) ---
-  const [form, setForm] = useState(initialForm);
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [loadingListings, setLoadingListings] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [photoError, setPhotoError] = useState("");
-  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  // drive active tab from the URL ?tab= query param so sidebar links work
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab") as Tab | null;
+  const VALID_TABS: Tab[] = ["overview", "log-dropoff", "collection-points", "epr-reports"];
+  const tab: Tab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : "overview";
 
-  // --- Collection points state ---
+  // shared listings logic
+  const {
+    form,
+    updateForm,
+    listings,
+    loadingListings,
+    submitting,
+    message,
+    error,
+    photoError,
+    uploadingPhotos,
+    handlePhotoSelect,
+    removePhoto,
+    handleSubmit,
+    analysis,
+    analysing,
+    analyseError,
+    handleAnalyse,
+    formStep,
+    skipToStep2,
+    backToStep1,
+  } = useListings(user);
+
+  // business-only: collection points
   const [collectionPoints, setCollectionPoints] = useState<CollectionPoint[]>([]);
   const [loadingCollectionPoints, setLoadingCollectionPoints] = useState(true);
   const [cpForm, setCpForm] = useState(initialCollectionPointForm);
@@ -168,21 +128,86 @@ export default function BusinessDashboardPage() {
   const [cpMessage, setCpMessage] = useState("");
   const [cpError, setCpError] = useState("");
 
-  const isPreview = !!user?.id.startsWith("preview-");
-  const points = user?.sellerProfile?.points ?? 0;
-  const isVerified = !!user?.sellerProfile?.registrationNo;
+  // business-only: log drop-off
+  const [dropoffForm, setDropoffForm] = useState(initialDropoffForm);
+  const [dropoffSubmitting, setDropoffSubmitting] = useState(false);
+  const [dropoffMessage, setDropoffMessage] = useState("");
+  const [dropoffError, setDropoffError] = useState("");
 
-  async function loadListings() {
+  function updateDropoffForm(field: keyof typeof initialDropoffForm, value: string) {
+    setDropoffForm((curr) => ({ ...curr, [field]: value }));
+  }
+
+  async function handleDropoffSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setDropoffMessage("");
+    setDropoffError("");
+    setDropoffSubmitting(true);
     try {
-      setLoadingListings(true);
-      const response = await apiClient.get<MyListingsResponse>("/listings/my");
-      setListings(response.listings);
-    } catch {
-      setError("Could not load your listings yet.");
+      const res = await apiClient.post<DropoffLogResponse>("/dropoffs/log", {
+        uniqueCode: dropoffForm.uniqueCode.trim().toUpperCase(),
+        materialType: dropoffForm.materialType,
+        quantityKg: Number(dropoffForm.quantityKg),
+      });
+      setDropoffMessage(
+        res.message ??
+          `Drop-off logged. ${res.pointsAwarded} points awarded to ${res.userName}.`,
+      );
+      setDropoffForm(initialDropoffForm);
+      // keep daily EPR log current
+      refreshDaily();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const data = err.data as { error?: string } | null;
+        setDropoffError(
+          data?.error ?? "Could not log the drop-off. Check the details and try again.",
+        );
+      } else {
+        setDropoffError("Could not log the drop-off. Check the details and try again.");
+      }
     } finally {
-      setLoadingListings(false);
+      setDropoffSubmitting(false);
     }
   }
+
+  const isPreview = !!user?.id.startsWith("preview-");
+  const points = user?.sellerProfile?.points ?? 0;
+
+  const {
+    notifications,
+    unreadCount,
+    loading: loadingNotifications,
+    markRead,
+    markAllRead,
+  } = useNotifications(user?.id);
+
+  const {
+    selectedDate,
+    incoming,
+    outgoing,
+    loadingDaily,
+    dailyError,
+    changeDate,
+    refreshDaily,
+    selectedMonth,
+    selectedYear,
+    setSelectedMonth,
+    setSelectedYear,
+    monthlyReport,
+    loadingMonthly,
+    monthlyError,
+    loadMonthly,
+    downloading,
+    downloadError,
+    downloadPDF,
+  } = useEPR(user?.userType === "BUSINESS" && !isPreview);
+
+  // TODO: `registrationNo` no longer exists on User.sellerProfile after the
+  // recent main merge — it was replaced by `uniqueCode` in AuthContext.tsx.
+  // Using uniqueCode as a stand-in for now; confirm with the team whether
+  // this is the correct replacement or whether registrationNo should be
+  // restored to the User type / API response.
+  const isVerified = !!user?.sellerProfile?.uniqueCode;
 
   async function loadCollectionPoints() {
     try {
@@ -199,81 +224,12 @@ export default function BusinessDashboardPage() {
   }
 
   useEffect(() => {
-    if (user?.userType === "SELLER" && !isPreview) {
-      void loadListings();
+    if ((user?.userType === "PERSONAL" || user?.userType === "BUSINESS") && !isPreview) {
       void loadCollectionPoints();
     } else {
-      setLoadingListings(false);
       setLoadingCollectionPoints(false);
     }
   }, [user?.id, user?.userType, isPreview]);
-
-  function updateForm(field: keyof typeof initialForm, value: string) {
-    setForm((current) => ({ ...current, [field]: value }));
-  }
-
-  async function handlePhotoSelect(event: ChangeEvent<HTMLInputElement>) {
-    setPhotoError("");
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    const remainingSlots = MAX_IMAGES - form.images.length;
-    if (remainingSlots <= 0) {
-      setPhotoError(`You've attached the maximum of ${MAX_IMAGES} photos.`);
-      event.target.value = "";
-      return;
-    }
-
-    const selected = Array.from(files).slice(0, remainingSlots);
-
-    try {
-      setUploadingPhotos(true);
-      const urls = await Promise.all(selected.map((file) => uploadImage(file)));
-      setForm((current) => ({
-        ...current,
-        images: [...current.images, ...urls],
-      }));
-    } catch {
-      setPhotoError("Could not upload one of those photos. Try again.");
-    } finally {
-      setUploadingPhotos(false);
-      event.target.value = "";
-    }
-  }
-
-  function removePhoto(index: number) {
-    setForm((current) => ({
-      ...current,
-      images: current.images.filter((_, i) => i !== index),
-    }));
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setMessage("");
-    setSubmitting(true);
-
-    try {
-      await apiClient.post("/listings", {
-        ...form,
-        quantityKg: Number(form.quantityKg),
-        locationLat: Number(form.locationLat),
-        locationLng: Number(form.locationLng),
-        images: form.images,
-        description: form.description || undefined,
-        plusCode: form.plusCode || undefined,
-        areaName: form.areaName || undefined,
-      });
-      setForm(initialForm);
-      setMessage("Ticket posted. It's live on the buyer floor now.");
-      await loadListings();
-    } catch {
-      setError("Could not post the listing. Check the fields and try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   function updateCpForm(
     field: keyof typeof initialCollectionPointForm,
@@ -323,20 +279,19 @@ export default function BusinessDashboardPage() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
+    { id: "log-dropoff", label: "Log drop-off" },
     { id: "collection-points", label: "Collection points" },
     { id: "epr-reports", label: "EPR reports" },
   ];
 
   return (
     <ProtectedRoute allowedUserType="BUSINESS">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
-      `}</style>
       <DashboardShell
-        eyebrow="Intake ledger"
+        eyebrow="Business dashboard"
         title={`Welcome${user ? `, ${user.name}` : ""}`}
         description="Weigh in a new batch, manage collection points, and track every ticket you've opened on the buyer floor."
         userName={user?.name}
+        userType={user?.userType}
         onLogout={() => void logout()}
       >
         <div
@@ -362,7 +317,7 @@ export default function BusinessDashboardPage() {
                 {user?.sellerProfile?.businessName || "Business name not set"}
               </p>
               <p className="mt-1 text-[11px]" style={{ color: "#5B5B54" }}>
-                Reg. No. {user?.sellerProfile?.registrationNo || "—"}
+                Code: {user?.sellerProfile?.uniqueCode || "—"}
               </p>
               {isVerified ? (
                 <span
@@ -413,48 +368,31 @@ export default function BusinessDashboardPage() {
               </p>
             </section>
 
-            <section
-              className="rounded-md border p-6"
-              style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
-            >
-              <p
-                className="text-[11px] font-semibold uppercase tracking-[0.24em]"
-                style={{ color: OCHRE, fontFamily: "'IBM Plex Mono', monospace" }}
-              >
-                Notifications
-              </p>
-              <div
-                className="mt-3 rounded-sm border border-dashed p-5 text-center"
-                style={{ borderColor: KRAFT_LIGHT }}
-              >
-                <p
-                  className="text-sm font-semibold uppercase tracking-[0.1em]"
-                  style={{ color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" }}
-                >
-                  Coming soon
-                </p>
-                <p className="mt-2 text-sm leading-6" style={{ color: "#5B5B54" }}>
-                  Notifications aren&apos;t live yet — this panel is ready for
-                  when the backend endpoint ships.
-                </p>
-              </div>
-            </section>
+            {/* Notifications */}
+            <NotificationsPanel
+              notifications={notifications}
+              unreadCount={unreadCount}
+              loading={loadingNotifications}
+              isPreview={isPreview}
+              onMarkRead={markRead}
+              onMarkAllRead={markAllRead}
+            />
           </div>
 
-          {/* Tabs */}
+          {/* Tab bar */}
           <div
             className="mt-6 flex gap-1 border-b px-1"
             style={{ borderColor: KRAFT_LIGHT }}
           >
             {tabs.map((t) => (
-              <button
+              <Link
                 key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
+                href={t.id === "overview" ? "/dashboard/business" : `/dashboard/business?tab=${t.id}`}
                 className="relative px-4 py-3 text-sm font-semibold uppercase tracking-[0.08em] transition"
                 style={{
                   fontFamily: "'IBM Plex Mono', monospace",
                   color: tab === t.id ? TEAL : "#5B5B54",
+                  textDecoration: "none",
                 }}
               >
                 {t.label}
@@ -464,13 +402,44 @@ export default function BusinessDashboardPage() {
                     style={{ background: TEAL }}
                   />
                 ) : null}
-              </button>
+              </Link>
             ))}
           </div>
 
+          {/* Overview tab — shared intake form + ticket list */}
           {tab === "overview" ? (
             <div className="mt-6 grid gap-6 p-1 lg:grid-cols-[1fr_0.62fr]">
-              {/* Intake form */}
+              <TicketIntakeForm
+                form={form}
+                formStep={formStep}
+                submitting={submitting}
+                uploadingPhotos={uploadingPhotos}
+                photoError={photoError}
+                message={message}
+                error={error}
+                isPreview={isPreview}
+                analysis={analysis}
+                analysing={analysing}
+                analyseError={analyseError}
+                onUpdate={updateForm}
+                onPhotoSelect={handlePhotoSelect}
+                onRemovePhoto={removePhoto}
+                onSubmit={handleSubmit}
+                onAnalyse={handleAnalyse}
+                onSkipToStep2={skipToStep2}
+                onBackToStep1={backToStep1}
+              />
+              <TicketsList
+                listings={listings}
+                loadingListings={loadingListings}
+                isPreview={isPreview}
+              />
+            </div>
+          ) : null}
+
+          {/* Log drop-off tab — business-only */}
+          {tab === "log-dropoff" ? (
+            <div className="mt-6 grid gap-6 p-1 lg:grid-cols-[1fr_0.62fr]">
               <section
                 className="rounded-md border p-6"
                 style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
@@ -479,51 +448,67 @@ export default function BusinessDashboardPage() {
                   className="text-[11px] font-semibold uppercase tracking-[0.24em]"
                   style={{ color: OCHRE, fontFamily: "'IBM Plex Mono', monospace" }}
                 >
-                  Open a new ticket
+                  Log a drop-off
                 </p>
                 <h2
                   className="mt-2 text-[26px] leading-tight"
                   style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: INK }}
                 >
-                  Weigh in a batch
+                  Record a material hand-in
                 </h2>
                 <p className="mt-2 max-w-xl text-sm leading-6" style={{ color: "#5B5B54" }}>
-                  Fill in the slip below. Once posted, buyers see it live on the
-                  marketplace floor.
+                  Enter the seller&apos;s unique code, select the material they
+                  brought, and weigh it in. Points are awarded automatically.
                 </p>
 
-                <form onSubmit={handleSubmit} className="mt-6 grid gap-6">
-                  <fieldset className="grid gap-4 border-t pt-5" style={{ borderColor: KRAFT_LIGHT }}>
+                <form onSubmit={handleDropoffSubmit} className="mt-6 grid gap-6">
+                  <fieldset
+                    className="grid gap-4 border-t pt-5"
+                    style={{ borderColor: KRAFT_LIGHT }}
+                  >
                     <legend className={labelClass} style={labelStyle}>
-                      01 — Batch details
+                      01 — Seller identification
                     </legend>
 
                     <label className="block">
                       <span className="text-sm font-semibold" style={{ color: INK }}>
-                        Title
+                        Unique code
                       </span>
                       <input
                         className={fieldClass}
-                        style={fieldStyle}
-                        value={form.title}
-                        onChange={(event) => updateForm("title", event.target.value)}
-                        placeholder="42 kg PET bottles"
+                        style={{ ...fieldStyle, fontFamily: "'IBM Plex Mono', monospace", textTransform: "uppercase", letterSpacing: "0.12em" }}
+                        value={dropoffForm.uniqueCode}
+                        onChange={(e) => updateDropoffForm("uniqueCode", e.target.value)}
+                        placeholder="TK-1234"
                         required
                       />
+                      <p className="mt-1 text-[11px]" style={{ color: "#5B5B54" }}>
+                        Ask the seller to show their code from their personal dashboard.
+                      </p>
                     </label>
+                  </fieldset>
+
+                  <fieldset
+                    className="grid gap-4 border-t pt-5"
+                    style={{ borderColor: KRAFT_LIGHT }}
+                  >
+                    <legend className={labelClass} style={labelStyle}>
+                      02 — Material details
+                    </legend>
 
                     <div className="grid gap-4 sm:grid-cols-2">
                       <label className="block">
                         <span className="text-sm font-semibold" style={{ color: INK }}>
-                          Material
+                          Material type
                         </span>
                         <select
                           className={fieldClass}
                           style={fieldStyle}
-                          value={form.materialType}
-                          onChange={(event) =>
-                            updateForm("materialType", event.target.value)
+                          value={dropoffForm.materialType}
+                          onChange={(e) =>
+                            updateDropoffForm("materialType", e.target.value)
                           }
+                          required
                         >
                           {materialTypes.map((type) => (
                             <option key={type} value={type}>
@@ -532,6 +517,7 @@ export default function BusinessDashboardPage() {
                           ))}
                         </select>
                       </label>
+
                       <label className="block">
                         <span className="text-sm font-semibold" style={{ color: INK }}>
                           Quantity (kg)
@@ -542,223 +528,46 @@ export default function BusinessDashboardPage() {
                           min="0.1"
                           step="0.1"
                           type="number"
-                          value={form.quantityKg}
-                          onChange={(event) =>
-                            updateForm("quantityKg", event.target.value)
-                          }
+                          value={dropoffForm.quantityKg}
+                          onChange={(e) => updateDropoffForm("quantityKg", e.target.value)}
                           required
                         />
-                      </label>
-                    </div>
-
-                    <label className="block">
-                      <span className="text-sm font-semibold" style={{ color: INK }}>
-                        Description
-                      </span>
-                      <textarea
-                        className="mt-2 min-h-24 w-full rounded-sm border bg-white px-3 py-3 text-sm outline-none transition"
-                        style={fieldStyle}
-                        value={form.description}
-                        onChange={(event) =>
-                          updateForm("description", event.target.value)
-                        }
-                        placeholder="Condition, packaging, pickup notes"
-                      />
-                    </label>
-                  </fieldset>
-
-                  <fieldset className="grid gap-4 border-t pt-5" style={{ borderColor: KRAFT_LIGHT }}>
-                    <legend className={labelClass} style={labelStyle}>
-                      02 — Pickup location
-                    </legend>
-
-                    <LocationPicker
-                      latitude={form.locationLat}
-                      longitude={form.locationLng}
-                      onChange={(lat, lng) => {
-                        updateForm("locationLat", lat);
-                        updateForm("locationLng", lng);
-                      }}
-                      buttonLabel="Use my current location"
-                    />
-
-                    <details className="group">
-                      <summary
-                        className="cursor-pointer text-sm font-semibold"
-                        style={{ color: KRAFT }}
-                      >
-                        Enter coordinates manually instead
-                      </summary>
-                      <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                        <label className="block">
-                          <span className="text-sm font-semibold" style={{ color: INK }}>
-                            Latitude
-                          </span>
-                          <input
-                            className={fieldClass}
-                            style={{ ...fieldStyle, fontFamily: "'IBM Plex Mono', monospace" }}
-                            step="any"
-                            type="number"
-                            value={form.locationLat}
-                            onChange={(event) =>
-                              updateForm("locationLat", event.target.value)
-                            }
-                            required
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="text-sm font-semibold" style={{ color: INK }}>
-                            Longitude
-                          </span>
-                          <input
-                            className={fieldClass}
-                            style={{ ...fieldStyle, fontFamily: "'IBM Plex Mono', monospace" }}
-                            step="any"
-                            type="number"
-                            value={form.locationLng}
-                            onChange={(event) =>
-                              updateForm("locationLng", event.target.value)
-                            }
-                            required
-                          />
-                        </label>
-                      </div>
-                    </details>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <label className="block">
-                        <span className="text-sm font-semibold" style={{ color: INK }}>
-                          Area name
-                        </span>
-                        <input
-                          className={fieldClass}
-                          style={fieldStyle}
-                          value={form.areaName}
-                          onChange={(event) =>
-                            updateForm("areaName", event.target.value)
-                          }
-                          placeholder="Westlands"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-sm font-semibold" style={{ color: INK }}>
-                          Plus code
-                        </span>
-                        <input
-                          className={fieldClass}
-                          style={fieldStyle}
-                          value={form.plusCode}
-                          onChange={(event) =>
-                            updateForm("plusCode", event.target.value)
-                          }
-                          placeholder="Optional"
-                        />
+                        <p className="mt-1 text-[11px]" style={{ color: "#5B5B54" }}>
+                          Points = kg × 10. E.g. 5 kg = 50 pts.
+                        </p>
                       </label>
                     </div>
                   </fieldset>
 
-                  <fieldset className="grid gap-3 border-t pt-5" style={{ borderColor: KRAFT_LIGHT }}>
-                    <legend className={labelClass} style={labelStyle}>
-                      03 — Photos ({form.images.length}/{MAX_IMAGES})
-                    </legend>
-                    <p className="text-sm leading-6" style={{ color: "#5B5B54" }}>
-                      Clear photos help buyers trust the weight and condition
-                      before they commit.
-                    </p>
-
-                    <div className="flex flex-wrap gap-3">
-                      {form.images.map((src, index) => (
-                        <div
-                          key={index}
-                          className="relative h-24 w-24 overflow-hidden rounded-sm border"
-                          style={{
-                            borderColor: KRAFT_LIGHT,
-                            transform: index % 2 === 0 ? "rotate(-2deg)" : "rotate(2deg)",
-                          }}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={src}
-                            alt={`Attached photo ${index + 1}`}
-                            className="h-full w-full object-cover"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removePhoto(index)}
-                            className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                            style={{ background: RUST }}
-                            aria-label={`Remove photo ${index + 1}`}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-
-                      {form.images.length < MAX_IMAGES ? (
-                        <label
-                          className="flex h-24 w-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-sm border border-dashed text-center"
-                          style={{ borderColor: KRAFT, color: KRAFT }}
-                        >
-                          <span className="text-xl leading-none">+</span>
-                          <span
-                            className="text-[10px] font-semibold uppercase tracking-[0.08em]"
-                            style={{ fontFamily: "'IBM Plex Mono', monospace" }}
-                          >
-                            Add photo
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            className="hidden"
-                            onChange={handlePhotoSelect}
-                          />
-                        </label>
-                      ) : null}
-                    </div>
-
-                    {uploadingPhotos ? (
-                      <p className="text-sm" style={{ color: KRAFT }}>
-                        Uploading photo...
-                      </p>
-                    ) : null}
-
-                    {photoError ? (
-                      <p className="text-sm" style={{ color: RUST }}>
-                        {photoError}
-                      </p>
-                    ) : null}
-                  </fieldset>
-
-                  {message ? (
+                  {dropoffMessage ? (
                     <p
                       className="rounded-sm border px-3 py-2 text-sm"
                       style={{ borderColor: TEAL, color: TEAL, background: "#EAF3F1" }}
                     >
-                      {message}
+                      {dropoffMessage}
                     </p>
                   ) : null}
-                  {error ? (
+                  {dropoffError ? (
                     <p
                       className="rounded-sm border px-3 py-2 text-sm"
                       style={{ borderColor: RUST, color: RUST, background: "#FBEFEC" }}
                     >
-                      {error}
+                      {dropoffError}
                     </p>
                   ) : null}
 
                   <button
                     className="h-11 rounded-sm px-4 text-sm font-semibold uppercase tracking-[0.1em] text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60"
                     style={{ background: TEAL, fontFamily: "'IBM Plex Mono', monospace" }}
-                    disabled={submitting || uploadingPhotos || isPreview}
+                    disabled={dropoffSubmitting || isPreview}
                     type="submit"
                   >
-                    {submitting ? "Posting..." : "Post ticket"}
+                    {dropoffSubmitting ? "Logging..." : "Log drop-off"}
                   </button>
                 </form>
               </section>
 
-              {/* My tickets */}
+              {/* How it works — reference panel */}
               <aside
                 className="rounded-md border p-6"
                 style={{ borderColor: KRAFT_LIGHT, background: INK }}
@@ -767,101 +576,60 @@ export default function BusinessDashboardPage() {
                   className="text-[11px] font-semibold uppercase tracking-[0.24em]"
                   style={{ color: OCHRE, fontFamily: "'IBM Plex Mono', monospace" }}
                 >
-                  My tickets
+                  How it works
                 </p>
-
-                {isPreview ? (
-                  <p className="mt-4 text-sm leading-6" style={{ color: "#B7C0BA" }}>
-                    Preview accounts can't load real tickets. Sign in with your
-                    account to post and manage material batches.
-                  </p>
-                ) : loadingListings ? (
-                  <p className="mt-4 text-sm" style={{ color: "#B7C0BA" }}>
-                    Pulling your ledger...
-                  </p>
-                ) : listings.length === 0 ? (
-                  <div
-                    className="mt-4 rounded-sm border border-dashed p-5 text-center"
-                    style={{ borderColor: "#3A453F" }}
-                  >
-                    <p
-                      className="text-sm font-semibold uppercase tracking-[0.1em]"
-                      style={{ color: CREAM, fontFamily: "'IBM Plex Mono', monospace" }}
-                    >
-                      No tickets yet
-                    </p>
-                    <p className="mt-2 text-sm leading-6" style={{ color: "#B7C0BA" }}>
-                      Post your first batch to start receiving buyer interest.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="mt-4 space-y-4">
-                    {listings.map((listing) => {
-                      const mat = materialStyles[listing.materialType];
-                      const stat = statusStyle(listing.status);
-                      return (
-                        <article
-                          key={listing.id}
-                          className="overflow-hidden rounded-sm border"
-                          style={{ borderColor: "#3A453F", background: PAPER }}
+                <div className="mt-4 space-y-4">
+                  {[
+                    {
+                      step: "01",
+                      title: "Seller arrives with recyclables",
+                      body: "They show their unique code (e.g. TK-1234) from their personal dashboard.",
+                    },
+                    {
+                      step: "02",
+                      title: "You enter the details above",
+                      body: "Enter the code, select the material type, and weigh the batch in kg.",
+                    },
+                    {
+                      step: "03",
+                      title: "Points are awarded automatically",
+                      body: "1 kg = 10 points. The seller's balance updates instantly. 100 pts = KES 500 voucher.",
+                    },
+                    {
+                      step: "04",
+                      title: "Errors explained",
+                      body: '"User code not found" — code doesn\'t exist. "Not registered here" — seller hasn\'t registered at your collection point.',
+                    },
+                  ].map(({ step, title, body }) => (
+                    <div key={step} className="flex gap-3">
+                      <span
+                        className="mt-0.5 shrink-0 text-[11px] font-semibold"
+                        style={{ color: OCHRE, fontFamily: "'IBM Plex Mono', monospace" }}
+                      >
+                        {step}
+                      </span>
+                      <div>
+                        <p
+                          className="text-sm font-semibold leading-snug"
+                          style={{ color: "#E8E4D8", fontFamily: "'Fraunces', serif" }}
                         >
-                          <div className="flex">
-                            {listing.images && listing.images.length > 0 ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={listing.images[0]}
-                                alt={listing.title}
-                                className="h-full w-20 flex-shrink-0 object-cover"
-                              />
-                            ) : (
-                              <div
-                                className="flex h-20 w-20 flex-shrink-0 items-center justify-center text-[10px] uppercase tracking-[0.08em]"
-                                style={{
-                                  background: mat.bg,
-                                  color: mat.text,
-                                  fontFamily: "'IBM Plex Mono', monospace",
-                                }}
-                              >
-                                No photo
-                              </div>
-                            )}
-                            <div className="flex-1 px-3 py-2">
-                              <div className="flex items-start justify-between gap-2">
-                                <h3
-                                  className="text-sm font-semibold leading-snug"
-                                  style={{ color: INK, fontFamily: "'Fraunces', serif" }}
-                                >
-                                  {listing.title}
-                                </h3>
-                                <span
-                                  className="rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em]"
-                                  style={{ color: stat.text, borderColor: stat.border }}
-                                >
-                                  {listing.status}
-                                </span>
-                              </div>
-                              <p
-                                className="mt-1 text-[11px] font-medium uppercase tracking-[0.06em]"
-                                style={{ color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" }}
-                              >
-                                {mat.label} · {listing.quantityKg} kg · #
-                                {ticketSerial(listing.id)}
-                              </p>
-                              <p className="mt-1 text-[11px]" style={{ color: "#5B5B54" }}>
-                                {listing.areaName || "No area added"} ·{" "}
-                                {listing._count?.interests ?? 0} interested
-                              </p>
-                            </div>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
+                          {title}
+                        </p>
+                        <p
+                          className="mt-1 text-[11px] leading-5"
+                          style={{ color: "#B7C0BA" }}
+                        >
+                          {body}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </aside>
             </div>
           ) : null}
 
+          {/* Collection points tab — business-only */}
           {tab === "collection-points" ? (
             <div className="mt-6 grid gap-6 p-1 lg:grid-cols-[1fr_0.62fr]">
               {/* Add collection point form */}
@@ -887,7 +655,10 @@ export default function BusinessDashboardPage() {
                 </p>
 
                 <form onSubmit={handleCpSubmit} className="mt-6 grid gap-6">
-                  <fieldset className="grid gap-4 border-t pt-5" style={{ borderColor: KRAFT_LIGHT }}>
+                  <fieldset
+                    className="grid gap-4 border-t pt-5"
+                    style={{ borderColor: KRAFT_LIGHT }}
+                  >
                     <legend className={labelClass} style={labelStyle}>
                       01 — Site details
                     </legend>
@@ -900,7 +671,7 @@ export default function BusinessDashboardPage() {
                         className={fieldClass}
                         style={fieldStyle}
                         value={cpForm.name}
-                        onChange={(event) => updateCpForm("name", event.target.value)}
+                        onChange={(e) => updateCpForm("name", e.target.value)}
                         placeholder="Westlands Drop-off Depot"
                         required
                       />
@@ -914,7 +685,7 @@ export default function BusinessDashboardPage() {
                         className={fieldClass}
                         style={fieldStyle}
                         value={cpForm.address}
-                        onChange={(event) => updateCpForm("address", event.target.value)}
+                        onChange={(e) => updateCpForm("address", e.target.value)}
                         placeholder="Waiyaki Way, next to..."
                         required
                       />
@@ -928,13 +699,16 @@ export default function BusinessDashboardPage() {
                         className={fieldClass}
                         style={fieldStyle}
                         value={cpForm.areaName}
-                        onChange={(event) => updateCpForm("areaName", event.target.value)}
+                        onChange={(e) => updateCpForm("areaName", e.target.value)}
                         placeholder="Westlands"
                       />
                     </label>
                   </fieldset>
 
-                  <fieldset className="grid gap-4 border-t pt-5" style={{ borderColor: KRAFT_LIGHT }}>
+                  <fieldset
+                    className="grid gap-4 border-t pt-5"
+                    style={{ borderColor: KRAFT_LIGHT }}
+                  >
                     <legend className={labelClass} style={labelStyle}>
                       02 — Location
                     </legend>
@@ -967,9 +741,7 @@ export default function BusinessDashboardPage() {
                             step="any"
                             type="number"
                             value={cpForm.locationLat}
-                            onChange={(event) =>
-                              updateCpForm("locationLat", event.target.value)
-                            }
+                            onChange={(e) => updateCpForm("locationLat", e.target.value)}
                             required
                           />
                         </label>
@@ -983,9 +755,7 @@ export default function BusinessDashboardPage() {
                             step="any"
                             type="number"
                             value={cpForm.locationLng}
-                            onChange={(event) =>
-                              updateCpForm("locationLng", event.target.value)
-                            }
+                            onChange={(e) => updateCpForm("locationLng", e.target.value)}
                             required
                           />
                         </label>
@@ -993,7 +763,10 @@ export default function BusinessDashboardPage() {
                     </details>
                   </fieldset>
 
-                  <fieldset className="grid gap-3 border-t pt-5" style={{ borderColor: KRAFT_LIGHT }}>
+                  <fieldset
+                    className="grid gap-3 border-t pt-5"
+                    style={{ borderColor: KRAFT_LIGHT }}
+                  >
                     <legend className={labelClass} style={labelStyle}>
                       03 — Materials accepted
                     </legend>
@@ -1048,7 +821,7 @@ export default function BusinessDashboardPage() {
                 </form>
               </section>
 
-              {/* Existing collection points */}
+              {/* Existing collection points list */}
               <aside
                 className="rounded-md border p-6"
                 style={{ borderColor: KRAFT_LIGHT, background: INK }}
@@ -1062,7 +835,7 @@ export default function BusinessDashboardPage() {
 
                 {isPreview ? (
                   <p className="mt-4 text-sm leading-6" style={{ color: "#B7C0BA" }}>
-                    Preview accounts can't load real collection points.
+                    Preview accounts can&apos;t load real collection points.
                   </p>
                 ) : loadingCollectionPoints ? (
                   <p className="mt-4 text-sm" style={{ color: "#B7C0BA" }}>
@@ -1134,29 +907,404 @@ export default function BusinessDashboardPage() {
             </div>
           ) : null}
 
+          {/* EPR reports tab — Sprint 5 */}
           {tab === "epr-reports" ? (
-            <div className="mt-6 p-1">
+            <div className="mt-6 space-y-6 p-1">
+
+              {/* ── Section 1: Daily Activity Log ── */}
               <section
-                className="rounded-md border p-10 text-center"
+                className="rounded-md border p-6"
+                style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p
+                      className="text-[11px] font-semibold uppercase tracking-[0.24em]"
+                      style={{ color: OCHRE, fontFamily: "'IBM Plex Mono', monospace" }}
+                    >
+                      Daily activity
+                    </p>
+                    <h2
+                      className="mt-1 text-[22px] leading-tight"
+                      style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: INK }}
+                    >
+                      Waste log
+                    </h2>
+                  </div>
+                  <label className="block">
+                    <span
+                      className="text-[11px] font-semibold uppercase tracking-[0.12em]"
+                      style={{ color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" }}
+                    >
+                      Date
+                    </span>
+                    <input
+                      type="date"
+                      className="mt-1 h-10 rounded-sm border bg-white px-3 text-sm outline-none transition"
+                      style={{ borderColor: KRAFT_LIGHT, color: INK, fontFamily: "'IBM Plex Mono', monospace" }}
+                      value={selectedDate}
+                      onChange={(e) => changeDate(e.target.value)}
+                    />
+                  </label>
+                </div>
+
+                {isPreview ? (
+                  <p className="mt-4 text-sm" style={{ color: "#5B5B54" }}>
+                    Sign in with a real business account to view activity logs.
+                  </p>
+                ) : dailyError ? (
+                  <p
+                    className="mt-4 rounded-sm border px-3 py-2 text-sm"
+                    style={{ borderColor: RUST, color: RUST, background: "#FBEFEC" }}
+                  >
+                    {dailyError}
+                  </p>
+                ) : loadingDaily ? (
+                  <p className="mt-4 text-sm" style={{ color: "#5B5B54" }}>
+                    Loading...
+                  </p>
+                ) : (
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                    {/* Incoming */}
+                    <div
+                      className="rounded-sm border p-4"
+                      style={{ borderColor: KRAFT_LIGHT, background: CREAM }}
+                    >
+                      <p
+                        className="text-[11px] font-semibold uppercase tracking-[0.16em]"
+                        style={{ color: TEAL, fontFamily: "'IBM Plex Mono', monospace" }}
+                      >
+                        Incoming today
+                      </p>
+                      <p
+                        className="mt-2 text-[32px] leading-none"
+                        style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: INK }}
+                      >
+                        {incoming?.totalKg ?? 0}
+                        <span
+                          className="ml-1 text-sm font-medium"
+                          style={{ color: KRAFT }}
+                        >
+                          kg
+                        </span>
+                      </p>
+                      {incoming?.summary && Object.keys(incoming.summary).length > 0 ? (
+                        <ul className="mt-3 space-y-1">
+                          {Object.entries(incoming.summary).map(([mat, kg]) => {
+                            const style = materialStyles[mat as MaterialType];
+                            return (
+                              <li key={mat} className="flex items-center justify-between gap-2">
+                                <span
+                                  className="rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em]"
+                                  style={{ background: style?.bg ?? "#F1F1EC", color: style?.text ?? "#5B5B54" }}
+                                >
+                                  {style?.label ?? mat}
+                                </span>
+                                <span
+                                  className="text-[11px] font-medium tabular-nums"
+                                  style={{ color: INK, fontFamily: "'IBM Plex Mono', monospace" }}
+                                >
+                                  {kg} kg
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <p className="mt-3 text-[11px]" style={{ color: "#5B5B54" }}>
+                          No incoming material on this date.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Outgoing */}
+                    <div
+                      className="rounded-sm border p-4"
+                      style={{ borderColor: KRAFT_LIGHT, background: CREAM }}
+                    >
+                      <p
+                        className="text-[11px] font-semibold uppercase tracking-[0.16em]"
+                        style={{ color: RUST, fontFamily: "'IBM Plex Mono', monospace" }}
+                      >
+                        Outgoing today
+                      </p>
+                      <p
+                        className="mt-2 text-[32px] leading-none"
+                        style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: INK }}
+                      >
+                        {outgoing?.totalKg ?? 0}
+                        <span
+                          className="ml-1 text-sm font-medium"
+                          style={{ color: KRAFT }}
+                        >
+                          kg
+                        </span>
+                      </p>
+                      {outgoing?.summary && Object.keys(outgoing.summary).length > 0 ? (
+                        <ul className="mt-3 space-y-1">
+                          {Object.entries(outgoing.summary).map(([mat, kg]) => {
+                            const style = materialStyles[mat as MaterialType];
+                            return (
+                              <li key={mat} className="flex items-center justify-between gap-2">
+                                <span
+                                  className="rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em]"
+                                  style={{ background: style?.bg ?? "#F1F1EC", color: style?.text ?? "#5B5B54" }}
+                                >
+                                  {style?.label ?? mat}
+                                </span>
+                                <span
+                                  className="text-[11px] font-medium tabular-nums"
+                                  style={{ color: INK, fontFamily: "'IBM Plex Mono', monospace" }}
+                                >
+                                  {kg} kg
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <p className="mt-3 text-[11px]" style={{ color: "#5B5B54" }}>
+                          No outgoing material on this date.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              {/* ── Section 2: Monthly EPR Report Preview ── */}
+              <section
+                className="rounded-md border p-6"
                 style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
               >
                 <p
                   className="text-[11px] font-semibold uppercase tracking-[0.24em]"
                   style={{ color: OCHRE, fontFamily: "'IBM Plex Mono', monospace" }}
                 >
-                  EPR reports
+                  Monthly report
                 </p>
                 <h2
-                  className="mt-3 text-2xl"
+                  className="mt-1 text-[22px] leading-tight"
                   style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: INK }}
                 >
-                  Monthly reports coming soon
+                  EPR summary
                 </h2>
-                <p className="mx-auto mt-2 max-w-md text-sm leading-6" style={{ color: "#5B5B54" }}>
-                  Extended Producer Responsibility reporting is planned for
-                  Sprint 4. This tab is a placeholder until that ships.
+                <p className="mt-1 text-sm leading-6" style={{ color: "#5B5B54" }}>
+                  Select a month and year, preview the data, then download the
+                  audit-ready PDF.
                 </p>
+
+                {/* month + year selectors */}
+                <div className="mt-5 flex flex-wrap items-end gap-4">
+                  <label className="block">
+                    <span
+                      className="text-[11px] font-semibold uppercase tracking-[0.12em]"
+                      style={{ color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" }}
+                    >
+                      Month
+                    </span>
+                    <select
+                      className="mt-1 h-10 rounded-sm border bg-white px-3 text-sm outline-none"
+                      style={{ borderColor: KRAFT_LIGHT, color: INK }}
+                      value={selectedMonth}
+                      onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                    >
+                      {[
+                        "January", "February", "March", "April", "May", "June",
+                        "July", "August", "September", "October", "November", "December",
+                      ].map((name, i) => (
+                        <option key={name} value={i + 1}>{name}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span
+                      className="text-[11px] font-semibold uppercase tracking-[0.12em]"
+                      style={{ color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" }}
+                    >
+                      Year
+                    </span>
+                    <select
+                      className="mt-1 h-10 rounded-sm border bg-white px-3 text-sm outline-none"
+                      style={{ borderColor: KRAFT_LIGHT, color: INK }}
+                      value={selectedYear}
+                      onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    >
+                      {[2025, 2026, 2027].map((y) => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => void loadMonthly()}
+                    disabled={loadingMonthly || isPreview}
+                    className="h-10 rounded-sm px-5 text-sm font-semibold uppercase tracking-[0.08em] text-white transition disabled:cursor-not-allowed disabled:opacity-60"
+                    style={{ background: TEAL, fontFamily: "'IBM Plex Mono', monospace" }}
+                  >
+                    {loadingMonthly ? "Loading..." : "Preview report"}
+                  </button>
+                </div>
+
+                {monthlyError ? (
+                  <p
+                    className="mt-4 rounded-sm border px-3 py-2 text-sm"
+                    style={{ borderColor: RUST, color: RUST, background: "#FBEFEC" }}
+                  >
+                    {monthlyError}
+                  </p>
+                ) : null}
+
+                {/* Report preview */}
+                {monthlyReport ? (
+                  <div
+                    className="mt-6 rounded-sm border p-5"
+                    style={{ borderColor: KRAFT_LIGHT, background: CREAM }}
+                  >
+                    {/* header */}
+                    <div
+                      className="flex flex-col gap-1 border-b pb-4 sm:flex-row sm:items-start sm:justify-between"
+                      style={{ borderColor: KRAFT_LIGHT }}
+                    >
+                      <div>
+                        <p
+                          className="text-base font-semibold"
+                          style={{ fontFamily: "'Fraunces', serif", color: INK }}
+                        >
+                          {monthlyReport.report.business.name}
+                        </p>
+                        <p
+                          className="mt-0.5 text-[11px]"
+                          style={{ color: "#5B5B54", fontFamily: "'IBM Plex Mono', monospace" }}
+                        >
+                          Reg: {monthlyReport.report.business.registrationNo || "—"}
+                        </p>
+                      </div>
+                      <p
+                        className="text-[11px] font-semibold uppercase tracking-[0.1em]"
+                        style={{ color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" }}
+                      >
+                        {new Date(monthlyReport.report.period.from).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}
+                        {" — "}
+                        {new Date(monthlyReport.report.period.to).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}
+                      </p>
+                    </div>
+
+                    {/* summary cards */}
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      {[
+                        { label: "Total incoming", value: monthlyReport.report.incoming.totalKg, color: TEAL },
+                        { label: "Total outgoing", value: monthlyReport.report.outgoing.totalKg, color: RUST },
+                        { label: "Net retained", value: monthlyReport.report.netWaste, color: INK },
+                      ].map(({ label, value, color }) => (
+                        <div
+                          key={label}
+                          className="rounded-sm border p-3 text-center"
+                          style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
+                        >
+                          <p
+                            className="text-[10px] font-semibold uppercase tracking-[0.14em]"
+                            style={{ color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" }}
+                          >
+                            {label}
+                          </p>
+                          <p
+                            className="mt-1 text-2xl font-bold leading-none"
+                            style={{ fontFamily: "'IBM Plex Mono', monospace", color }}
+                          >
+                            {value}
+                            <span className="ml-1 text-xs font-medium" style={{ color: KRAFT }}>kg</span>
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* material breakdown tables */}
+                    <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                      {(["incoming", "outgoing"] as const).map((direction) => {
+                        const data = monthlyReport.report[direction];
+                        const accent = direction === "incoming" ? TEAL : RUST;
+                        return (
+                          <div key={direction}>
+                            <p
+                              className="text-[11px] font-semibold uppercase tracking-[0.14em]"
+                              style={{ color: accent, fontFamily: "'IBM Plex Mono', monospace" }}
+                            >
+                              {direction} by material · {data.entries} entries
+                            </p>
+                            {Object.keys(data.byMaterial).length === 0 ? (
+                              <p className="mt-2 text-[11px]" style={{ color: "#5B5B54" }}>
+                                No data for this period.
+                              </p>
+                            ) : (
+                              <table className="mt-2 w-full text-sm">
+                                <tbody>
+                                  {Object.entries(data.byMaterial).map(([mat, kg]) => {
+                                    const ms = materialStyles[mat as MaterialType];
+                                    return (
+                                      <tr key={mat} className="border-b last:border-0" style={{ borderColor: KRAFT_LIGHT }}>
+                                        <td className="py-1.5 pr-3">
+                                          <span
+                                            className="rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em]"
+                                            style={{ background: ms?.bg ?? "#F1F1EC", color: ms?.text ?? "#5B5B54" }}
+                                          >
+                                            {ms?.label ?? mat}
+                                          </span>
+                                        </td>
+                                        <td
+                                          className="py-1.5 text-right tabular-nums"
+                                          style={{ color: INK, fontFamily: "'IBM Plex Mono', monospace" }}
+                                        >
+                                          {kg} kg
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* ── Section 3: Download PDF ── */}
+                    <div
+                      className="mt-6 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between"
+                      style={{ borderColor: KRAFT_LIGHT }}
+                    >
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: INK }}>
+                          Ready for EPR audit submission
+                        </p>
+                        <p className="mt-0.5 text-[11px]" style={{ color: "#5B5B54" }}>
+                          Single-page PDF with business info, period, all
+                          material breakdowns, and a branded footer.
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-start gap-2 sm:items-end">
+                        <button
+                          type="button"
+                          onClick={() => void downloadPDF()}
+                          disabled={downloading}
+                          className="h-10 rounded-sm px-5 text-sm font-semibold uppercase tracking-[0.08em] text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60"
+                          style={{ background: INK, fontFamily: "'IBM Plex Mono', monospace" }}
+                        >
+                          {downloading ? "Generating PDF..." : "Download PDF"}
+                        </button>
+                        {downloadError ? (
+                          <p className="text-[11px]" style={{ color: RUST }}>
+                            {downloadError}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </section>
+
             </div>
           ) : null}
         </div>

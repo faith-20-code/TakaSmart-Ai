@@ -13,28 +13,23 @@ export function LoadingScreen() {
 }
 
 export function getDashboardPath(user: User): string {
-  if (user.userType === 'BUYER') return '/buyer';
-  if (user.userType === 'ADMIN') return '/admin';
-  if (user.sellerProfile?.accountType === 'BUSINESS') return '/dashboard/business';
-  return '/dashboard/personal';
+  if (user.userType === "BUYER") return "/buyer";
+  if (user.userType === "ADMIN") return "/admin";
+  if (user.userType === "BUSINESS") return "/dashboard/business";
+  return "/dashboard/personal";
 }
 
 export function ProtectedRoute({
   allowedUserType,
   children,
 }: {
-  allowedUserType: UserType | "PERSONAL" | "BUSINESS";
+  allowedUserType: UserType;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const { user, loading } = useAuth();
 
-  function getEffectiveType(u: User): string {
-    if (u.userType !== "SELLER") return u.userType;
-    return u.sellerProfile?.accountType ?? "PERSONAL";
-  }
-
-  const mismatch = !!user && getEffectiveType(user) !== allowedUserType;
+  const mismatch = !!user && user.userType !== allowedUserType;
 
   useEffect(() => {
     if (loading) return;
@@ -44,5 +39,5 @@ export function ProtectedRoute({
 
   if (loading || !user || mismatch) return <LoadingScreen />;
 
-  return children;
+  return <>{children}</>;
 }
