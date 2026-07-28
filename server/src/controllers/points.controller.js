@@ -65,7 +65,7 @@ const getAvailableCollectionPoints = async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    res.json({ points });
+    res.json({ collectionPoints: points });
   } catch (err) {
     next(err);
   }
