@@ -338,35 +338,34 @@ function BusinessDashboard() {
             </section>
 
             <section
-              className="rounded-md border p-6"
-              style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
-            >
-              <p
-                className="text-[11px] font-semibold uppercase tracking-[0.24em]"
-                style={{ color: OCHRE, fontFamily: "'IBM Plex Mono', monospace" }}
-              >
-                Points balance
-              </p>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span
-                  className="text-[40px] leading-none"
-                  style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, color: INK }}
-                >
-                  {points.toLocaleString()}
-                </span>
-                <span
-                  className="text-sm font-semibold uppercase tracking-[0.08em]"
-                  style={{ color: KRAFT, fontFamily: "'IBM Plex Mono', monospace" }}
-                >
-                  pts
-                </span>
-              </div>
-              <p className="mt-2 text-sm leading-6" style={{ color: "#5B5B54" }}>
-                {isPreview
-                  ? "Preview accounts don't accrue real points."
-                  : "Earned from completed tickets on the buyer floor."}
-              </p>
-            </section>
+  className="rounded-md border p-6"
+  style={{ borderColor: KRAFT_LIGHT, background: PAPER }}
+>
+  <p
+    className="text-[11px] font-semibold uppercase tracking-[0.24em]"
+    style={{ color: OCHRE, fontFamily: "'IBM Plex Mono', monospace" }}
+  >
+    Collection Points
+  </p>
+
+  <div className="mt-3">
+    <span
+      className="text-[40px] leading-none"
+      style={{
+        fontFamily: "'Fraunces', serif",
+        fontWeight: 600,
+        color: INK,
+      }}
+    >
+      {loadingCollectionPoints ? "..." : collectionPoints.length}
+    </span>
+  </div>
+
+  <p className="mt-2 text-sm leading-6" style={{ color: "#5B5B54" }}>
+    Your registered drop-off locations where personal users can bring recyclable
+    materials.
+  </p>
+</section>
 
             {/* Notifications */}
             <NotificationsPanel
