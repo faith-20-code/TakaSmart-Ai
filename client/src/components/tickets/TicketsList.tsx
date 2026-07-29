@@ -112,7 +112,7 @@ function InterestsDrawer({
                           className="text-sm font-semibold leading-snug"
                           style={{ color: INK, fontFamily: serif }}
                         >
-                          {interest.buyer.buyerProfile.companyName}
+                          {interest.buyer.buyerProfile?.companyName ?? "Company name not set"}
                         </p>
                         <p
                           className="mt-0.5 text-[11px]"
